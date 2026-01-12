@@ -1,0 +1,257 @@
+---
+title: "Instances"
+description: "Create and manage VM instances"
+---
+
+## Overview
+
+Instances are VMs running the in10nt agent server. They provide isolated environments for executing AI coding tasks.
+
+## Create Instance
+
+Create a new VM instance:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'my-agent',              // Optional: Human-readable name
+  description: 'My agent',       // Optional: Description
+  templateId: 'tmpl_12345',      // Optional: Use custom template
+  vmImage: 'custom:latest',      // Optional: Direct image (overrides template)
+  vmSize: 'shared-cpu-4x',       // Optional: VM size
+  region: 'iad',                 // Optional: Region code
+  env: {                         // Optional: Environment variables
+    API_KEY: 'secret'
+  }
+});
+
+console.log(`Instance ID: ${instance.instanceId}`);
+console.log(`Status: ${instance.status}`);
+console.log(`Agent URL: ${instance.agentUrl}`);
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `string` | Human-readable instance name |
+| `description` | `string` | Instance description |
+| `templateId` | `string` | Container template ID to use |
+| `vmImage` | `string` | Direct Docker image (overrides template) |
+| `vmSize` | `string` | VM size (default: `shared-cpu-4x`) |
+| `region` | `string` | Region code (default: `iad`) |
+| `env` | `object` | Environment variables |
+
+### Response
+
+```javascript
+{
+  instanceId: "inst_abc123",
+  name: "my-agent",
+  status: "running",
+  agentUrl: "http://machine-id.vm.app.internal:3000",
+  createdAt: "2025-01-06T..."
+}
+```
+
+## List Instances
+
+Get all your instances:
+
+```javascript
+const instances = await client.instances.list();
+
+instances.forEach(instance => {
+  console.log(`${instance.name}: ${instance.status}`);
+});
+```
+
+## Get Instance
+
+Retrieve a specific instance by ID:
+
+```javascript
+const instance = await client.instances.get('inst_abc123');
+```
+
+Or by name:
+
+```javascript
+const instance = await client.instances.getByName('my-agent');
+```
+
+## Run Task
+
+Execute a coding task on an instance:
+
+```javascript
+const result = await instance.run(
+  'Build a REST API with user CRUD operations',
+  {
+    model: 'anthropic/claude-sonnet-4.5',  // Optional
+    provider: 'openrouter',                 // Optional
+    timeout: 480000,                        // Optional: 8 minutes
+    waitForHealth: true,                    // Optional: Auto health check
+    system: 'Custom system prompt'          // Optional
+  }
+);
+
+console.log(result.response);
+console.log(`Tokens used: ${result.tokensUsed}`);
+console.log(`Duration: ${result.duration_ms}ms`);
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `model` | `string` | `anthropic/claude-sonnet-4.5` | LLM model to use |
+| `provider` | `string` | `openrouter` | Model provider |
+| `timeout` | `number` | `480000` | Timeout in milliseconds |
+| `waitForHealth` | `boolean` | `true` | Auto health check before running |
+| `system` | `string` | - | Custom system prompt |
+| `tools` | `array` | - | Custom tools |
+| `autoTools` | `boolean` | `true` | Enable automatic tool usage |
+
+<Tip>
+  The SDK automatically waits for the instance to be healthy before running tasks when `waitForHealth: true`
+</Tip>
+
+## Conversation Context
+
+Instance maintains conversation history automatically. You can send multiple prompts:
+
+```javascript
+const instance = await client.instances.create({ name: 'web-builder' });
+
+// First prompt
+await instance.run('Create a simple REST API with user CRUD');
+
+// Follow-up prompts (context maintained)
+await instance.run('Add JWT authentication');
+await instance.run('Add rate limiting middleware');
+await instance.run('Write integration tests');
+```
+
+## Instance Management
+
+### Health Check
+
+Check if instance is ready:
+
+```javascript
+const health = await instance.health();
+console.log(health.status); // "healthy"
+```
+
+### Get Changes
+
+Get files modified by the instance:
+
+```javascript
+const changes = await instance.getChanges();
+console.log('Modified files:', changes.changes);
+```
+
+### Refresh Status
+
+Update instance data:
+
+```javascript
+await instance.refresh();
+console.log(`Current status: ${instance.status}`);
+```
+
+### Stop Instance
+
+Stop a running instance:
+
+```javascript
+await instance.stop();
+```
+
+### Destroy Instance
+
+Permanently delete an instance:
+
+```javascript
+await instance.destroy();
+```
+
+<Warning>
+  Destroying an instance is permanent and cannot be undone
+</Warning>
+
+## Clone Instance
+
+Create a new instance from an existing one (clones workspace and configuration):
+
+```javascript
+const clone = await client.instances.createFromTemplate({
+  templateName: 'base-instance',
+  newInstanceName: 'cloned-instance'
+});
+```
+
+<Note>
+  This is different from container templates - it clones an existing instance's workspace, files, and configuration
+</Note>
+
+## Stream Logs
+
+Stream real-time logs from an instance:
+
+```javascript
+// Requires 'eventsource' package in Node.js
+const stopStreaming = await instance.streamLogs((log) => {
+  console.log(`[${log.type}] ${log.message}`);
+});
+
+// Run task
+await instance.run('Build a web application');
+
+// Stop streaming when done
+stopStreaming();
+```
+
+## Example Workflows
+
+### Quick Task
+
+```javascript
+const instance = await client.instances.create({ name: 'quick-task' });
+const result = await instance.run('Create a calculator function');
+await instance.destroy();
+```
+
+### Long-Running Session
+
+```javascript
+const instance = await client.instances.create({ name: 'session' });
+
+try {
+  await instance.run('Initialize project structure');
+  await instance.run('Add user authentication');
+  await instance.run('Write tests');
+  
+  const changes = await instance.getChanges();
+  console.log('All changes:', changes);
+} finally {
+  await instance.destroy();
+}
+```
+
+### Custom Environment
+
+```javascript
+const instance = await client.instances.create({
+  name: 'python-ml',
+  templateId: 'tmpl_python_ml',
+  env: {
+    PYTHONPATH: '/workspace',
+    MODEL_VERSION: '2.0'
+  }
+});
+
+const result = await instance.run('Train a classifier on data.csv');
+```
+

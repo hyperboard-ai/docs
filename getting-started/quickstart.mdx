@@ -1,0 +1,93 @@
+---
+title: "Quickstart"
+description: "Get started with in10nt in 5 minutes"
+---
+
+## Installation
+
+Install the SDK using npm or yarn:
+
+```bash
+npm install @in10nt/sdk
+```
+
+```bash
+yarn add @in10nt/sdk
+```
+
+## Setup
+
+Get your API key from the in10nt dashboard and initialize the client:
+
+```javascript
+import { In10ntClient } from '@in10nt/sdk';
+
+const client = new In10ntClient({
+  apiKey: 'your_api_key'  // or set IN10NT_API_KEY env var
+});
+```
+
+<Tip>
+  You can also use the alias `In10tClient` if you prefer shorter names
+</Tip>
+
+## Create Your First Agent
+
+Create an instance and run your first task:
+
+```javascript
+// Create instance
+const instance = await client.instances.create({
+  name: 'my-first-agent'
+});
+
+// Run a task
+const result = await instance.run(
+  'Create a simple Express.js server with a health check endpoint'
+);
+
+console.log(result.response);
+console.log(`Tokens used: ${result.tokensUsed}`);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Authentication"
+    icon="key"
+    href="/getting-started/authentication"
+  >
+    Learn about API authentication
+  </Card>
+  <Card
+    title="Instances API"
+    icon="server"
+    href="/api/instances"
+  >
+    Explore instance management
+  </Card>
+  <Card
+    title="Examples"
+    icon="lightbulb"
+    href="/guides/examples"
+  >
+    See more usage examples
+  </Card>
+  <Card
+    title="Best Practices"
+    icon="star"
+    href="/guides/best-practices"
+  >
+    Learn recommended patterns
+  </Card>
+</CardGroup>
+
+## What You Can Do
+
+- **`Create instances`**: Spin up AI coding agents in seconds
+- **`Run tasks`**: Execute complex coding tasks with natural language
+- **`Maintain context`**: Continue conversations across multiple prompts
+- **`Custom environments`**: Use any Docker image as your base
+- **`Track usage`**: Monitor token consumption and costs
+

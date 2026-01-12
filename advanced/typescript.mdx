@@ -1,0 +1,423 @@
+---
+title: "TypeScript"
+description: "TypeScript definitions and usage"
+---
+
+## Installation
+
+The SDK includes TypeScript definitions out of the box:
+
+```bash
+npm install @in10nt/sdk
+```
+
+## Type Definitions
+
+### Client Configuration
+
+```typescript
+interface In10ntClientConfig {
+  apiKey: string;
+  baseURL?: string;
+}
+```
+
+### Container Templates
+
+```typescript
+interface ContainerTemplateConfig {
+  name: string;
+  image: string;
+  registryType: 'dockerhub' | 'private' | 'gcr';
+  description?: string;
+  registryAuth?: {
+    username: string;
+    password: string;
+  };
+}
+
+interface ContainerTemplateData {
+  templateId: string;
+  name: string;
+  image: string;
+  status: 'building' | 'ready' | 'failed';
+  platformImage?: string;
+  createdAt: string;
+  error?: string;
+}
+```
+
+### Instances
+
+```typescript
+interface InstanceConfig {
+  name?: string;
+  description?: string;
+  templateId?: string;
+  vmImage?: string;
+  vmSize?: string;
+  region?: string;
+  env?: Record<string, string>;
+}
+
+interface InstanceData {
+  instanceId: string;
+  name?: string;
+  description?: string;
+  status: 'running' | 'stopped' | 'error';
+  agentUrl: string;
+  createdAt: string;
+  templateId?: string;
+  region?: string;
+  vmSize?: string;
+  env?: Record<string, string>;
+}
+```
+
+### Task Execution
+
+```typescript
+interface RunOptions {
+  model?: string;
+  provider?: string;
+  system?: string;
+  tools?: any[];
+  autoTools?: boolean;
+  timeout?: number;
+  waitForHealth?: boolean;
+  healthCheckRetries?: number;
+  healthCheckDelay?: number;
+}
+
+interface RunResult {
+  response: string;
+  usage: {
+    total_tokens: number;
+    cost: number;
+  };
+  tokensUsed: number;
+  duration_ms: number;
+}
+```
+
+### Usage & Billing
+
+```typescript
+interface TokenUsage {
+  monthlyTokens: number;
+  totalTokens: number;
+  monthlyCost: number;
+  totalCost: number;
+  lastUsage: string | null;
+}
+```
+
+## Class Definitions
+
+### In10ntClient
+
+```typescript
+class In10ntClient {
+  templates: ContainerTemplateManager;
+  instances: InstanceManager;
+  usage: UsageManager;
+
+  constructor(config: In10ntClientConfig);
+  
+  // Request methods
+  getHeaders(): Record<string, string>;
+  request(method: string, path: string, data?: any): Promise<any>;
+  get(path: string): Promise<any>;
+  post(path: string, data?: any): Promise<any>;
+  delete(path: string): Promise<any>;
+  
+  // Legacy methods
+  createInstance(config: InstanceConfig): Promise<Instance>;
+  listInstances(): Promise<Instance[]>;
+  getInstance(instanceId: string): Promise<Instance>;
+  getStats(): Promise<any>;
+}
+```
+
+### ContainerTemplate
+
+```typescript
+class ContainerTemplate {
+  templateId: string;
+  name: string;
+  image: string;
+  status: 'building' | 'ready' | 'failed';
+  platformImage?: string;
+  createdAt: string;
+  error?: string;
+  
+  waitUntilReady(options?: {
+    timeout?: number;
+    pollInterval?: number;
+  }): Promise<ContainerTemplate>;
+  
+  delete(): Promise<void>;
+}
+```
+
+### Instance
+
+```typescript
+class Instance {
+  instanceId: string;
+  name?: string;
+  description?: string;
+  status: string;
+  agentUrl: string;
+  createdAt: string;
+  templateId?: string;
+  region?: string;
+  vmSize?: string;
+  env?: Record<string, string>;
+  
+  run(prompt: string, options?: RunOptions): Promise<RunResult>;
+  stop(): Promise<void>;
+  destroy(): Promise<void>;
+  health(): Promise<any>;
+  getChanges(): Promise<any>;
+  refresh(): Promise<any>;
+  streamLogs(onLog: (log: any) => void): Promise<() => void>;
+  
+  // Legacy methods
+  getId(): string;
+  getStatus(): string;
+  getInfo(): InstanceData;
+  checkHealth(): Promise<any>;
+}
+```
+
+## Usage Example
+
+```typescript
+import { In10ntClient } from '@in10nt/sdk';
+import type {
+  InstanceConfig,
+  RunOptions,
+  RunResult,
+  TokenUsage
+} from '@in10nt/sdk';
+
+const client = new In10ntClient({
+  apiKey: process.env.IN10NT_API_KEY!
+});
+
+async function buildAPI(): Promise<void> {
+  const config: InstanceConfig = {
+    name: 'api-builder',
+    description: 'REST API builder',
+    env: {
+      NODE_ENV: 'development'
+    }
+  };
+
+  const instance = await client.instances.create(config);
+
+  const options: RunOptions = {
+    model: 'anthropic/claude-sonnet-4.5',
+    timeout: 300000,
+    waitForHealth: true
+  };
+
+  const result: RunResult = await instance.run(
+    'Build a REST API with user CRUD',
+    options
+  );
+
+  console.log(result.response);
+  console.log(`Tokens: ${result.tokensUsed}`);
+  console.log(`Duration: ${result.duration_ms}ms`);
+
+  await instance.destroy();
+}
+
+buildAPI().catch(console.error);
+```
+
+## Custom Type Extensions
+
+Extend types for your use case:
+
+```typescript
+import { Instance, In10ntClient } from '@in10nt/sdk';
+
+// Custom session type
+interface AgentSession {
+  id: string;
+  instance: Instance;
+  createdAt: Date;
+  tasks: Task[];
+}
+
+interface Task {
+  prompt: string;
+  result: string;
+  tokensUsed: number;
+  timestamp: Date;
+}
+
+class SessionManager {
+  private client: In10ntClient;
+  private sessions: Map<string, AgentSession>;
+
+  constructor(client: In10ntClient) {
+    this.client = client;
+    this.sessions = new Map();
+  }
+
+  async createSession(name: string): Promise<AgentSession> {
+    const instance = await this.client.instances.create({ name });
+    
+    const session: AgentSession = {
+      id: instance.instanceId,
+      instance,
+      createdAt: new Date(),
+      tasks: []
+    };
+
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async runTask(
+    sessionId: string,
+    prompt: string
+  ): Promise<Task> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    const result = await session.instance.run(prompt);
+    
+    const task: Task = {
+      prompt,
+      result: result.response,
+      tokensUsed: result.tokensUsed,
+      timestamp: new Date()
+    };
+
+    session.tasks.push(task);
+    return task;
+  }
+
+  async closeSession(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      await session.instance.destroy();
+      this.sessions.delete(sessionId);
+    }
+  }
+}
+```
+
+## Type Guards
+
+Create type guards for runtime checking:
+
+```typescript
+function isRunResult(obj: any): obj is RunResult {
+  return (
+    typeof obj === 'object' &&
+    typeof obj.response === 'string' &&
+    typeof obj.tokensUsed === 'number' &&
+    typeof obj.duration_ms === 'number' &&
+    obj.usage &&
+    typeof obj.usage.total_tokens === 'number' &&
+    typeof obj.usage.cost === 'number'
+  );
+}
+
+function isInstance(obj: any): obj is Instance {
+  return (
+    typeof obj === 'object' &&
+    typeof obj.instanceId === 'string' &&
+    typeof obj.status === 'string' &&
+    typeof obj.agentUrl === 'string'
+  );
+}
+
+// Usage
+const result = await instance.run('Task');
+if (isRunResult(result)) {
+  console.log(`Valid result: ${result.tokensUsed} tokens`);
+}
+```
+
+## Async Type Utilities
+
+```typescript
+type AsyncReturnType<T extends (...args: any) => Promise<any>> =
+  T extends (...args: any) => Promise<infer R> ? R : any;
+
+// Get return types from SDK methods
+type InstanceType = AsyncReturnType<typeof client.instances.create>;
+type TemplateType = AsyncReturnType<typeof client.templates.create>;
+type UsageType = AsyncReturnType<typeof client.usage.getTokenUsage>;
+```
+
+## Strict Mode Configuration
+
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "strict": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"]
+  }
+}
+```
+
+## Generic Wrapper
+
+Create a generic wrapper for type safety:
+
+```typescript
+class TypedClient<TEnv extends Record<string, string> = Record<string, string>> {
+  private client: In10ntClient;
+
+  constructor(config: In10ntClientConfig) {
+    this.client = new In10ntClient(config);
+  }
+
+  async createInstance(
+    name: string,
+    env: TEnv
+  ): Promise<Instance> {
+    return this.client.instances.create({ name, env });
+  }
+}
+
+// Usage with typed env
+interface MyEnv {
+  API_KEY: string;
+  DATABASE_URL: string;
+  NODE_ENV: 'development' | 'production';
+}
+
+const typedClient = new TypedClient<MyEnv>({
+  apiKey: process.env.IN10NT_API_KEY!
+});
+
+const instance = await typedClient.createInstance('my-app', {
+  API_KEY: 'key',
+  DATABASE_URL: 'postgres://...',
+  NODE_ENV: 'development'
+});
+```
+

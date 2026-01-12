@@ -1,0 +1,250 @@
+---
+title: "Container Templates"
+description: "Create custom Docker environments"
+---
+
+## Overview
+
+Container templates let you create custom environments by layering your base Docker image with in10nt agent infrastructure.
+
+<Note>
+  Container templates create custom Docker images. For cloning existing instances with their workspace/files, use `instances.createFromTemplate()` instead
+</Note>
+
+## Create Template
+
+Create a custom environment from a Docker image:
+
+```javascript
+const template = await client.templates.create({
+  name: 'python-ml',              // Required: Human-readable name
+  description: 'Python ML env',   // Optional: Description
+  image: 'python:3.11-slim',      // Required: Base Docker image
+  registryType: 'dockerhub',      // Required: dockerhub | private | gcr
+  registryAuth: {                 // Optional: For private registries
+    username: 'user',
+    password: 'pass'
+  }
+});
+
+console.log(`Template ID: ${template.templateId}`);
+console.log(`Status: ${template.status}`); // "building"
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | Yes | Human-readable template name |
+| `image` | `string` | Yes | Base Docker image (e.g., `python:3.11-slim`) |
+| `registryType` | `string` | Yes | Registry type: `dockerhub`, `private`, or `gcr` |
+| `description` | `string` | No | Template description |
+| `registryAuth` | `object` | No | Authentication for private registries |
+
+### Registry Types
+
+- **`dockerhub`**: Public Docker Hub images
+- **`private`**: Private Docker registries
+- **`gcr`**: Google Container Registry
+
+### Response
+
+```javascript
+{
+  templateId: "tmpl_1704588123456",
+  name: "python-ml",
+  image: "python:3.11-slim",
+  status: "building",  // building → ready | failed
+  createdAt: "2025-01-06T..."
+}
+```
+
+## Wait Until Ready
+
+Wait for template to finish building:
+
+```javascript
+const template = await client.templates.create({
+  name: 'ml-env',
+  image: 'nvidia/cuda:12.2-runtime',
+  registryType: 'dockerhub'
+});
+
+await template.waitUntilReady({
+  timeout: 300000,      // 5 minutes (default)
+  pollInterval: 5000    // Check every 5 seconds (default)
+});
+
+console.log(`Ready! Platform image: ${template.platformImage}`);
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `timeout` | `number` | `300000` | Maximum wait time in ms |
+| `pollInterval` | `number` | `5000` | Polling interval in ms |
+
+## List Templates
+
+Get all your templates:
+
+```javascript
+const templates = await client.templates.list();
+
+templates.forEach(template => {
+  console.log(`${template.name}: ${template.status}`);
+});
+```
+
+## Get Template Status
+
+Check template build status:
+
+```javascript
+const template = await client.templates.get('tmpl_1704588123456');
+
+console.log(`Status: ${template.status}`);
+if (template.status === 'failed') {
+  console.error(`Error: ${template.error}`);
+}
+```
+
+### Status Values
+
+- **`building`**: Template is being built
+- **`ready`**: Template is ready to use
+- **`failed`**: Build failed (check `error` field)
+
+## Delete Template
+
+Delete a template:
+
+```javascript
+await template.delete();
+```
+
+Or by ID:
+
+```javascript
+const template = await client.templates.get('tmpl_123');
+await template.delete();
+```
+
+## Use Template with Instance
+
+Once a template is ready, use it to create instances:
+
+```javascript
+// Create and wait for template
+const template = await client.templates.create({
+  name: 'ml-env',
+  image: 'python:3.11-slim',
+  registryType: 'dockerhub'
+});
+
+await template.waitUntilReady();
+
+// Create instance with template
+const instance = await client.instances.create({
+  name: 'ml-agent',
+  templateId: template.templateId
+});
+
+const result = await instance.run('Train a classifier on data.csv');
+```
+
+## Private Registry Authentication
+
+For private registries, provide authentication:
+
+```javascript
+const template = await client.templates.create({
+  name: 'private-env',
+  image: 'registry.example.com/myimage:latest',
+  registryType: 'private',
+  registryAuth: {
+    username: process.env.REGISTRY_USER,
+    password: process.env.REGISTRY_PASS
+  }
+});
+```
+
+<Warning>
+  Never hardcode registry credentials. Use environment variables or secret management
+</Warning>
+
+## Common Use Cases
+
+### Python ML Environment
+
+```javascript
+const mlTemplate = await client.templates.create({
+  name: 'python-ml',
+  image: 'python:3.11-slim',
+  registryType: 'dockerhub',
+  description: 'Python with ML libraries'
+});
+
+await mlTemplate.waitUntilReady();
+```
+
+### Node.js Development
+
+```javascript
+const nodeTemplate = await client.templates.create({
+  name: 'node-dev',
+  image: 'node:20-alpine',
+  registryType: 'dockerhub',
+  description: 'Node.js 20 development'
+});
+
+await nodeTemplate.waitUntilReady();
+```
+
+### CUDA/GPU Environment
+
+```javascript
+const gpuTemplate = await client.templates.create({
+  name: 'cuda-env',
+  image: 'nvidia/cuda:12.2-runtime',
+  registryType: 'dockerhub',
+  description: 'NVIDIA CUDA 12.2'
+});
+
+await gpuTemplate.waitUntilReady();
+```
+
+## Error Handling
+
+```javascript
+try {
+  const template = await client.templates.create({
+    name: 'my-env',
+    image: 'python:3.11-slim',
+    registryType: 'dockerhub'
+  });
+  
+  await template.waitUntilReady({ timeout: 300000 });
+  
+} catch (error) {
+  if (error.message.includes('Template build failed')) {
+    console.error('Build failed - check image and credentials');
+  } else if (error.message.includes('timeout')) {
+    console.error('Build took too long');
+  } else {
+    console.error('Unexpected error:', error.message);
+  }
+}
+```
+
+## Template vs Instance Cloning
+
+| Feature | Container Templates | Instance Cloning |
+|---------|-------------------|------------------|
+| What it does | Layers base Docker image with agent infrastructure | Clones existing instance workspace |
+| Use case | Custom base environments (Python, Node, etc.) | Reuse configured workspaces |
+| Method | `client.templates.create()` | `client.instances.createFromTemplate()` |
+| Build time | 2-5 minutes | Instant |
+| Files included | Only base image files | All workspace files |
+

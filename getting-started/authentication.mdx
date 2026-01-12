@@ -1,0 +1,82 @@
+---
+title: "Authentication"
+description: "Authenticate your API requests"
+---
+
+## API Key Authentication
+
+All endpoints (except `/health`) require authentication via API key.
+
+### Using the SDK
+
+The SDK handles authentication automatically when you provide your API key:
+
+```javascript
+const client = new In10ntClient({
+  apiKey: 'your_api_key'
+});
+```
+
+### Environment Variables
+
+You can also set your API key as an environment variable:
+
+```bash
+export IN10NT_API_KEY=your_api_key
+```
+
+Then initialize the client without explicitly passing the key:
+
+```javascript
+const client = new In10ntClient({
+  apiKey: process.env.IN10NT_API_KEY
+});
+```
+
+## Direct API Requests
+
+If you're making direct API requests without the SDK, include your API key in the Authorization header:
+
+### Bearer Token (Recommended)
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/instances
+```
+
+### X-API-Key Header (Alternative)
+
+```bash
+curl -H "X-API-Key: YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/instances
+```
+
+## Base URL
+
+The default API base URL is:
+
+```
+https://in10t-api-v2.fly.dev
+```
+
+You can override this when initializing the client:
+
+```javascript
+const client = new In10ntClient({
+  apiKey: 'your_api_key',
+  baseURL: 'https://custom-api-url.com'
+});
+```
+
+## Security Best Practices
+
+<Warning>
+  Never commit API keys to version control. Always use environment variables or secure secret management.
+</Warning>
+
+- Store API keys in environment variables
+- Use different keys for development and production
+- Rotate keys regularly
+- Never expose keys in client-side code
+- Use secret management services (AWS Secrets Manager, HashiCorp Vault, etc.)
+

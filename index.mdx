@@ -1,97 +1,102 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "in10nt SDK"
+description: "Build and deploy AI agents with custom environments"
 ---
 
-## Setting up
+## Overview
 
-Get your documentation site up and running in minutes.
+`in10nt` provides a simplified API for creating and managing AI coding agents with custom Docker environments. The SDK has been streamlined to 3 core flows:
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={3}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Container Templates"
+    icon="docker"
   >
-    Edit your docs locally and preview them in real time.
+    Create custom environments with your base images
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="Instances"
+    icon="server"
   >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+    Create and manage VM instances
   </Card>
   <Card
-    title="API documentation"
+    title="Task Execution"
     icon="terminal"
-    href="/api-reference/introduction"
   >
-    Auto-generate API documentation from OpenAPI specifications.
+    Run AI-powered coding tasks
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Quick Example
 
-Everything you need to create world-class documentation.
+```javascript
+import { In10ntClient } from '@in10nt/sdk';
 
-<Columns cols={2}>
+const client = new In10ntClient({
+  apiKey: process.env.IN10NT_API_KEY
+});
+
+// Create instance and run task
+const instance = await client.instances.create({
+  name: 'my-agent'
+});
+
+const result = await instance.run(
+  'Build a REST API for user management'
+);
+
+console.log(result.response);
+```
+
+## Key Features
+
+- **`Simple API`**: Intuitive manager pattern with `templates`, `instances`, and `usage`
+- **`Custom Environments`**: Use any Docker image as your base
+- **`Auto Health Checks`**: Automatic instance readiness detection
+- **`Conversation History`**: Maintained automatically across multiple prompts
+- **`TypeScript Support`**: Full type definitions included
+
+## Get Started
+
+<CardGroup cols={2}>
   <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
+    title="Quickstart"
+    icon="rocket"
+    href="/getting-started/quickstart"
   >
-    Use MDX to style your docs pages.
+    Get up and running in 5 minutes
   </Card>
   <Card
-    title="Code samples"
+    title="Authentication"
+    icon="key"
+    href="/getting-started/authentication"
+  >
+    Learn how to authenticate your requests
+  </Card>
+  <Card
+    title="API Reference"
     icon="code"
-    href="/essentials/code"
+    href="/api/instances"
   >
-    Add sample code to demonstrate how to use your product.
+    Explore the complete API documentation
   </Card>
   <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
+    title="Examples"
+    icon="book"
+    href="/guides/examples"
   >
-    Display images and other media.
+    See real-world usage examples
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## SDK Architecture
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+```
+In10ntClient
+├── templates: ContainerTemplateManager
+├── instances: InstanceManager
+└── usage: UsageManager
+```
+
+The SDK uses `axios` for HTTP requests and provides a fluent API with method chaining and async/await support.

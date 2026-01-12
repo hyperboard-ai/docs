@@ -1,0 +1,353 @@
+---
+title: "Examples"
+description: "Real-world usage examples"
+---
+
+## Quick Start
+
+Create an instance and run a simple task:
+
+```javascript
+import { In10ntClient } from '@in10nt/sdk';
+
+const client = new In10ntClient({
+  apiKey: process.env.IN10NT_API_KEY
+});
+
+const instance = await client.instances.create({
+  name: 'quick-agent'
+});
+
+const result = await instance.run(
+  'Build a web scraper that extracts product prices from Amazon'
+);
+
+console.log(result.response);
+console.log(`Tokens used: ${result.tokensUsed}`);
+```
+
+## Custom Environment
+
+Create a Python ML environment and run ML tasks:
+
+```javascript
+// Create custom Python ML environment
+const template = await client.templates.create({
+  name: 'python-ml',
+  image: 'python:3.11-slim',
+  registryType: 'dockerhub',
+  description: 'Python with ML libraries'
+});
+
+console.log('Building template...');
+await template.waitUntilReady();
+console.log('Template ready!');
+
+// Create instance with custom environment
+const instance = await client.instances.create({
+  name: 'ml-agent',
+  templateId: template.templateId
+});
+
+// Run ML tasks
+const result = await instance.run(
+  'Train a sentiment classifier on reviews.csv and evaluate performance'
+);
+
+console.log(result.response);
+```
+
+## Conversation & Iteration
+
+Maintain context across multiple prompts:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'web-builder'
+});
+
+// First prompt - health check happens automatically
+await instance.run('Create a simple REST API with user CRUD');
+
+// Follow-up prompts (conversation history maintained)
+await instance.run('Add JWT authentication');
+await instance.run('Add rate limiting middleware');
+await instance.run('Write integration tests');
+
+// Get all changes
+const changes = await instance.getChanges();
+console.log('Files modified:', changes.changes);
+```
+
+## Clone from Existing Instance
+
+Create base instance and clone it for different use cases:
+
+```javascript
+// Create a base instance
+const baseInstance = await client.instances.create({
+  name: 'calculator-base',
+  description: 'Calculator with dependencies installed'
+});
+
+// Set it up with dependencies
+await baseInstance.run('Install calculator dependencies and create base files');
+
+// Clone it for new use cases
+const clone1 = await client.instances.createFromTemplate({
+  templateName: 'calculator-base',
+  newInstanceName: 'calculator-clone-1'
+});
+
+// The clone inherits description, env, region, vmSize from the base
+await clone1.run('Use the calculator to compute 15 * 8');
+```
+
+## Streaming Logs
+
+Stream real-time logs from an instance:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'logger-agent'
+});
+
+// Stream logs in real-time (requires 'eventsource' package in Node.js)
+const stopStreaming = await instance.streamLogs((log) => {
+  console.log(`[${log.type}] ${log.message}`);
+});
+
+// Run task
+await instance.run('Build a complex web application');
+
+// Stop streaming when done
+stopStreaming();
+```
+
+## Skip Health Check for Testing
+
+For faster testing, skip automatic health checks:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'test-agent'
+});
+
+// Skip automatic health check for faster testing
+const result = await instance.run('Quick test', {
+  waitForHealth: false,
+  timeout: 60000
+});
+```
+
+## Error Handling
+
+Proper error handling for production use:
+
+```javascript
+try {
+  const instance = await client.instances.create({
+    name: 'my-agent'
+  });
+
+  const result = await instance.run('Build something', {
+    timeout: 120000 // 2 minutes
+  });
+  
+  console.log(result.response);
+  
+} catch (error) {
+  if (error.message.includes('timeout')) {
+    console.error('Task took too long');
+  } else if (error.message.includes('404')) {
+    console.error('Instance not found');
+  } else if (error.message.includes('Instance with name')) {
+    console.error('Name already exists - choose different name');
+  } else {
+    console.error('Unexpected error:', error.message);
+  }
+}
+```
+
+## Web Scraper
+
+Build a complete web scraper:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'scraper',
+  env: {
+    TARGET_URL: 'https://example.com'
+  }
+});
+
+await instance.run(`
+  Create a web scraper that:
+  1. Fetches product data from $TARGET_URL
+  2. Extracts prices, titles, and descriptions
+  3. Saves to CSV file
+  4. Handles pagination
+  5. Includes error handling
+`);
+
+const changes = await instance.getChanges();
+console.log('Created files:', changes.changes);
+```
+
+## REST API Builder
+
+Build a complete REST API with authentication:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'api-builder'
+});
+
+// Step 1: Basic CRUD
+await instance.run('Create Express.js REST API with user CRUD operations');
+
+// Step 2: Add auth
+await instance.run('Add JWT authentication with login and register endpoints');
+
+// Step 3: Add middleware
+await instance.run('Add rate limiting and request logging middleware');
+
+// Step 4: Add tests
+await instance.run('Write integration tests for all endpoints');
+
+// Step 5: Add docs
+await instance.run('Generate OpenAPI/Swagger documentation');
+
+const changes = await instance.getChanges();
+console.log('Project structure:', changes.changes);
+```
+
+## Data Processing Pipeline
+
+Build a data processing pipeline:
+
+```javascript
+const template = await client.templates.create({
+  name: 'data-pipeline',
+  image: 'python:3.11-slim',
+  registryType: 'dockerhub'
+});
+
+await template.waitUntilReady();
+
+const instance = await client.instances.create({
+  name: 'data-processor',
+  templateId: template.templateId
+});
+
+await instance.run(`
+  Create a data processing pipeline that:
+  1. Reads CSV files from input directory
+  2. Cleans and normalizes data
+  3. Performs statistical analysis
+  4. Generates visualization charts
+  5. Exports results to JSON and HTML report
+`);
+```
+
+## Microservices Generator
+
+Generate multiple microservices:
+
+```javascript
+const services = ['users', 'products', 'orders'];
+
+for (const service of services) {
+  const instance = await client.instances.create({
+    name: `${service}-service`
+  });
+  
+  await instance.run(`
+    Create a microservice for ${service} with:
+    - REST API endpoints
+    - PostgreSQL database models
+    - Docker configuration
+    - Unit and integration tests
+  `);
+  
+  const changes = await instance.getChanges();
+  console.log(`${service} service created:`, changes.changes);
+}
+```
+
+## GPU-Accelerated ML Training
+
+Use CUDA for GPU-accelerated tasks:
+
+```javascript
+const gpuTemplate = await client.templates.create({
+  name: 'cuda-ml',
+  image: 'nvidia/cuda:12.2-runtime',
+  registryType: 'dockerhub'
+});
+
+await gpuTemplate.waitUntilReady();
+
+const instance = await client.instances.create({
+  name: 'gpu-trainer',
+  templateId: gpuTemplate.templateId,
+  vmSize: 'gpu-a100' // GPU instance
+});
+
+await instance.run(`
+  Train a neural network using PyTorch with GPU acceleration:
+  1. Load dataset from data.csv
+  2. Build CNN model
+  3. Train with early stopping
+  4. Evaluate on test set
+  5. Save model weights
+`);
+```
+
+## Automated Testing Suite
+
+Generate comprehensive test suite:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'test-generator'
+});
+
+await instance.run(`
+  Analyze the codebase and generate:
+  1. Unit tests for all functions
+  2. Integration tests for API endpoints
+  3. E2E tests for critical user flows
+  4. Test fixtures and mocks
+  5. CI/CD configuration for running tests
+`);
+```
+
+## Multi-Language Project
+
+Work with multiple programming languages:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'fullstack-app'
+});
+
+// Backend
+await instance.run('Create Python Flask backend with PostgreSQL');
+
+// Frontend
+await instance.run('Create React frontend with TypeScript');
+
+// Integration
+await instance.run('Connect frontend to backend API');
+
+// DevOps
+await instance.run('Create Docker Compose setup for development');
+
+// Documentation
+await instance.run('Generate README with setup instructions');
+
+const changes = await instance.getChanges();
+console.log('Complete project:', changes.changes);
+```
+

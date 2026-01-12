@@ -1,0 +1,445 @@
+---
+title: "Prebuilt Agents"
+description: "Create reusable agent templates with createFromTemplate"
+---
+
+## Overview
+
+The `createFromTemplate()` method allows you to create reusable "template" instances that can be quickly cloned for instant agent deployment.
+
+**Key Benefits:**
+- **`Skip repetitive setup`**: No need to reinstall packages or recreate files
+- **`Save time and money`**: Reuse configured environments (75% cost reduction)
+- **`Instant deployment`**: Clone instances in seconds, not minutes
+
+## How It Works
+
+### Step 1: Create a Base Instance
+
+Create an instance and set it up with everything you need:
+
+```javascript
+import { In10ntClient } from '@in10nt/sdk';
+
+const client = new In10ntClient({
+  apiKey: process.env.IN10NT_API_KEY
+});
+
+// Create base instance
+const baseInstance = await client.instances.create({
+  name: 'calculator-base',
+  description: 'Calculator agent with all dependencies',
+  env: {
+    NODE_ENV: 'production',
+    WORKSPACE_TYPE: 'calculator'
+  }
+});
+
+// Set it up with dependencies and files
+await baseInstance.run(`
+  Install the following:
+  1. Create a calculator.py with basic math functions
+  2. Install numpy and pandas
+  3. Create a data/ directory with sample CSV files
+  4. Set up a README with usage instructions
+`);
+
+console.log('✅ Base instance ready:', baseInstance.name);
+```
+
+### Step 2: Clone the Template
+
+Instantly create new instances from the template:
+
+```javascript
+// Clone 1: For user calculations
+const userAgent = await client.instances.createFromTemplate({
+  templateName: 'calculator-base',
+  newInstanceName: 'user-calculator-1'
+});
+
+// Clone 2: For analytics
+const analyticsAgent = await client.instances.createFromTemplate({
+  templateName: 'calculator-base',
+  newInstanceName: 'analytics-calculator'
+});
+
+// Both clones inherit:
+// - description, env, region, vmSize
+// - All files and dependencies from the base instance
+```
+
+### Step 3: Use Immediately
+
+The cloned instance is ready to use right away:
+
+```javascript
+// No setup needed - just start working!
+const result = await userAgent.run('Calculate the average of data.csv');
+console.log(result.response);
+```
+
+## What Gets Inherited
+
+| Property | Inherited? | Description |
+|----------|-----------|-------------|
+| `name` | ❌ No | You provide a new name |
+| `description` | ✅ Yes | Copied from template |
+| `env` | ✅ Yes | Environment variables |
+| `templateId` | ✅ Yes | Container template (if used) |
+| `region` | ✅ Yes | Deployment region |
+| `vmSize` | ✅ Yes | VM size configuration |
+| `files` | ✅ Yes* | All workspace files |
+| `dependencies` | ✅ Yes* | Installed packages |
+
+*Files and dependencies are inherited at the infrastructure level through workspace snapshotting.
+
+## Common Use Cases
+
+### Web Development Agent
+
+```javascript
+// Create base with all tools
+const webBase = await client.instances.create({
+  name: 'web-dev-base',
+  description: 'Full-stack web development environment',
+  env: {
+    NODE_VERSION: '18',
+    DATABASE_TYPE: 'postgres'
+  }
+});
+
+await webBase.run(`
+  Set up a complete web development environment:
+  1. Install Node.js, npm, and common packages (express, react, etc.)
+  2. Set up git configuration
+  3. Create project structure with best practices
+  4. Install ESLint, Prettier, and testing frameworks
+  5. Create sample API and frontend templates
+`);
+
+// Now clone it for each project
+const ecommerceProject = await client.instances.createFromTemplate({
+  templateName: 'web-dev-base',
+  newInstanceName: 'ecommerce-site'
+});
+
+await ecommerceProject.run('Build an e-commerce product catalog API');
+```
+
+### Data Science Agent
+
+```javascript
+// Create ML environment
+const mlBase = await client.instances.create({
+  name: 'ml-analyst-base',
+  description: 'Python ML environment with common libraries',
+  env: {
+    PYTHON_VERSION: '3.11',
+    JUPYTER_ENABLED: 'true'
+  }
+});
+
+await mlBase.run(`
+  Install data science stack:
+  1. Python with numpy, pandas, scikit-learn, matplotlib
+  2. Jupyter notebook setup
+  3. Sample datasets in data/ directory
+  4. Utility functions for common ML tasks
+  5. Pre-configured plotting templates
+`);
+
+// Clone for each analysis task
+const salesAnalysis = await client.instances.createFromTemplate({
+  templateName: 'ml-analyst-base',
+  newInstanceName: 'sales-analysis-2024'
+});
+
+await salesAnalysis.run('Analyze sales trends and create visualizations');
+```
+
+### Testing/QA Agent
+
+```javascript
+// Create test environment
+const qaBase = await client.instances.create({
+  name: 'qa-testing-base',
+  description: 'Automated testing environment',
+  env: {
+    TEST_FRAMEWORK: 'jest',
+    BROWSER: 'chromium'
+  }
+});
+
+await qaBase.run(`
+  Set up testing environment:
+  1. Install Jest, Playwright, and testing utilities
+  2. Create test templates (unit, integration, e2e)
+  3. Set up CI/CD configuration files
+  4. Install code coverage tools
+  5. Create example test suites
+`);
+
+// Clone for each project to test
+const projectTests = await client.instances.createFromTemplate({
+  templateName: 'qa-testing-base',
+  newInstanceName: 'project-x-tests'
+});
+
+await projectTests.run('Write comprehensive tests for the API endpoints');
+```
+
+## Complete Example: Calculator Factory
+
+```javascript
+import { In10ntClient } from '@in10nt/sdk';
+
+const client = new In10ntClient({
+  apiKey: process.env.IN10NT_API_KEY
+});
+
+async function createCalculatorFactory() {
+  console.log('📦 Creating base calculator instance...');
+  
+  const base = await client.instances.create({
+    name: 'calculator-factory',
+    description: 'Advanced calculator with scientific functions',
+    env: {
+      PRECISION: 'high',
+      UNIT_SYSTEM: 'metric'
+    }
+  });
+
+  await base.run(`
+    Create a comprehensive calculator application:
+    
+    1. calculator.py with:
+       - Basic operations (add, subtract, multiply, divide)
+       - Scientific functions (sin, cos, tan, log, exp)
+       - Unit conversions (length, weight, temperature)
+       - Statistical functions (mean, median, std dev)
+    
+    2. data_processor.py for handling CSV/Excel files
+    3. Install dependencies: numpy, pandas, scipy
+    4. Create example_data.csv with sample calculations
+    5. Write usage_guide.md with examples
+  `);
+
+  console.log('✅ Base instance configured!');
+  return base.name;
+}
+
+async function useCalculator(templateName, taskName, calculation) {
+  console.log(`\n🧮 Creating calculator for: ${taskName}...`);
+  
+  const calc = await client.instances.createFromTemplate({
+    templateName: templateName,
+    newInstanceName: `calc-${taskName}-${Date.now()}`
+  });
+
+  console.log(`✅ Calculator ready: ${calc.name}`);
+  
+  const result = await calc.run(calculation);
+  console.log(`📊 Result: ${result.response.substring(0, 200)}...`);
+  
+  return calc;
+}
+
+// Main workflow
+async function main() {
+  // Create the base template once
+  const templateName = await createCalculatorFactory();
+  
+  // Now create multiple calculators instantly
+  await useCalculator(
+    templateName,
+    'sales-analysis',
+    'Calculate the average monthly sales from example_data.csv'
+  );
+  
+  await useCalculator(
+    templateName,
+    'conversion-rates',
+    'Convert 100 miles to kilometers and calculate fuel efficiency'
+  );
+  
+  console.log('\n🎉 All calculators deployed and running!');
+}
+
+main().catch(console.error);
+```
+
+## Best Practices
+
+### Name Templates Clearly
+
+```javascript
+// ✅ Good - descriptive names
+'web-dev-base'
+'ml-analyst-v2'
+'qa-testing-node18'
+
+// ❌ Bad - vague names
+'template1'
+'base'
+'test'
+```
+
+### Document What's Installed
+
+```javascript
+const base = await client.instances.create({
+  name: 'python-ml-base',
+  description: 'Python 3.11, numpy, pandas, scikit-learn, matplotlib, jupyter',
+  env: {
+    PYTHON_VERSION: '3.11',
+    PACKAGES: 'ml-stack-2024'
+  }
+});
+```
+
+### Version Your Templates
+
+```javascript
+// Include version in name for breaking changes
+'web-dev-base-v1'  // Node 16, React 17
+'web-dev-base-v2'  // Node 18, React 18
+```
+
+### Test Before Using
+
+```javascript
+// Verify the template works before cloning
+const testClone = await client.instances.createFromTemplate({
+  templateName: 'ml-analyst-base',
+  newInstanceName: 'test-clone'
+});
+
+const testResult = await testClone.run('Run a simple test calculation');
+console.log('Template test:', testResult.response);
+```
+
+## vs Container Templates
+
+| Feature | `createFromTemplate()` | `templates.create()` |
+|---------|----------------------|---------------------|
+| **Purpose** | Clone existing instance workspace | Build custom Docker image |
+| **What's cloned** | Files, dependencies, configuration | Docker base image + layers |
+| **Speed** | ⚡ Fast (instant clone) | 🐌 Slow (builds image) |
+| **Use case** | Prebuilt agents with files | Custom OS/system packages |
+| **Method** | `instances.createFromTemplate()` | `templates.create()` |
+
+```javascript
+// Instance cloning - fast, workspace-level
+const clone = await client.instances.createFromTemplate({
+  templateName: 'calculator-base',
+  newInstanceName: 'calc-1'
+});
+
+// Container template - slow, image-level
+const template = await client.templates.create({
+  name: 'cuda-env',
+  image: 'nvidia/cuda:12.2-runtime',
+  registryType: 'dockerhub'
+});
+await template.waitUntilReady(); // Takes minutes
+```
+
+## Cost Optimization
+
+### Save 75% on Setup Time
+
+```javascript
+// ❌ Expensive: Set up each time
+for (let i = 0; i < 10; i++) {
+  const instance = await client.instances.create({ name: `agent-${i}` });
+  await instance.run('Install packages...'); // 5 minutes each
+  await instance.run('Set up environment...'); // 5 minutes each
+  await instance.run('Do actual work...'); // 2 minutes
+}
+// Total: 120 minutes
+
+// ✅ Efficient: Set up once, clone many times
+const base = await client.instances.create({ name: 'base' });
+await base.run('Install packages...'); // 5 minutes (once)
+await base.run('Set up environment...'); // 5 minutes (once)
+
+for (let i = 0; i < 10; i++) {
+  const clone = await client.instances.createFromTemplate({
+    templateName: 'base',
+    newInstanceName: `agent-${i}`
+  });
+  await clone.run('Do actual work...'); // 2 minutes
+}
+// Total: 30 minutes
+// Savings: 75% reduction! 💰
+```
+
+## Troubleshooting
+
+### Template Not Found
+
+```javascript
+try {
+  const clone = await client.instances.createFromTemplate({
+    templateName: 'my-template',
+    newInstanceName: 'clone-1'
+  });
+} catch (error) {
+  if (error.message.includes('not found')) {
+    console.error('Template instance does not exist!');
+    console.log('Available instances:');
+    const instances = await client.instances.list();
+    instances.forEach(i => console.log(`  - ${i.name}`));
+  }
+}
+```
+
+### List Available Templates
+
+```javascript
+// All instances can be templates - just list them
+const instances = await client.instances.list();
+
+console.log('Available templates:');
+instances.forEach(instance => {
+  console.log(`\n📦 ${instance.name}`);
+  console.log(`   Description: ${instance.description || 'N/A'}`);
+  console.log(`   Status: ${instance.status}`);
+});
+```
+
+## Quick Reference
+
+```javascript
+// Create base instance
+const base = await client.instances.create({
+  name: 'my-base',
+  description: 'Description of what it has',
+  env: { KEY: 'value' }
+});
+
+// Configure it
+await base.run('Install dependencies and create files...');
+
+// Clone it
+const clone = await client.instances.createFromTemplate({
+  templateName: 'my-base',
+  newInstanceName: 'my-clone-1'
+});
+
+// Use clone immediately
+await clone.run('Start working!');
+```
+
+## Summary
+
+**createFromTemplate is perfect for:**
+- ✅ Creating prebuilt agents with dependencies
+- ✅ Rapid deployment of configured environments
+- ✅ Reusing workspace setups across multiple instances
+- ✅ Saving time and money on repetitive setup tasks
+- ✅ Building agent factories for common tasks
+
+Start building your agent templates today and deploy instances in seconds! 🚀
+

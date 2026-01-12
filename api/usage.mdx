@@ -1,0 +1,191 @@
+---
+title: "Usage & Billing"
+description: "Track token usage and costs"
+---
+
+## Overview
+
+Monitor your token consumption and associated costs across all instances.
+
+## Get Token Usage
+
+Retrieve your usage statistics:
+
+```javascript
+const usage = await client.usage.getTokenUsage();
+
+console.log(`Tokens this month: ${usage.monthlyTokens}`);
+console.log(`Cost this month: $${usage.monthlyCost}`);
+console.log(`Total tokens: ${usage.totalTokens}`);
+console.log(`Total cost: $${usage.totalCost}`);
+console.log(`Last usage: ${usage.lastUsage}`);
+```
+
+### Response
+
+```javascript
+{
+  monthlyTokens: 1250000,
+  totalTokens: 5000000,
+  monthlyCost: 15.75,
+  totalCost: 63.00,
+  lastUsage: "2025-01-06T12:34:56Z"
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `monthlyTokens` | `number` | Tokens used this month |
+| `totalTokens` | `number` | Total tokens used (all time) |
+| `monthlyCost` | `number` | Cost this month in USD |
+| `totalCost` | `number` | Total cost in USD |
+| `lastUsage` | `string` | Timestamp of last token usage |
+
+## Track Task Usage
+
+Each task execution returns usage data:
+
+```javascript
+const result = await instance.run('Build a REST API');
+
+console.log(`Tokens used: ${result.tokensUsed}`);
+console.log(`Cost: $${result.usage.cost}`);
+console.log(`Duration: ${result.duration_ms}ms`);
+```
+
+### Task Response
+
+```javascript
+{
+  response: "I've created a REST API...",
+  tokensUsed: 15432,
+  usage: {
+    total_tokens: 15432,
+    cost: 0.023
+  },
+  duration_ms: 45230
+}
+```
+
+## Get General Stats
+
+Get general statistics about your account:
+
+```javascript
+const stats = await client.usage.getStats();
+console.log(stats);
+```
+
+<Note>
+  This is a legacy endpoint maintained for backwards compatibility
+</Note>
+
+## Usage Monitoring Example
+
+Track usage across multiple tasks:
+
+```javascript
+const instance = await client.instances.create({ name: 'tracker' });
+
+let totalTokens = 0;
+let totalCost = 0;
+
+// Task 1
+const result1 = await instance.run('Create user model');
+totalTokens += result1.tokensUsed;
+totalCost += result1.usage.cost;
+
+// Task 2
+const result2 = await instance.run('Add authentication');
+totalTokens += result2.tokensUsed;
+totalCost += result2.usage.cost;
+
+console.log(`Session tokens: ${totalTokens}`);
+console.log(`Session cost: $${totalCost.toFixed(4)}`);
+
+// Check monthly totals
+const usage = await client.usage.getTokenUsage();
+console.log(`Monthly total: ${usage.monthlyTokens} tokens`);
+```
+
+## Cost Optimization Tips
+
+<CardGroup cols={2}>
+  <Card title="Reuse Instances" icon="recycle">
+    Maintain conversation context across tasks instead of creating new instances
+  </Card>
+  <Card title="Smaller Models" icon="gauge">
+    Use appropriate model sizes for simpler tasks
+  </Card>
+  <Card title="Timeouts" icon="clock">
+    Set reasonable timeouts to avoid runaway costs
+  </Card>
+  <Card title="Monitor Usage" icon="chart-line">
+    Regularly check usage to detect anomalies
+  </Card>
+</CardGroup>
+
+## Set Usage Alerts
+
+Monitor usage programmatically:
+
+```javascript
+class UsageMonitor {
+  constructor(client, threshold) {
+    this.client = client;
+    this.threshold = threshold;
+  }
+
+  async check() {
+    const usage = await this.client.usage.getTokenUsage();
+    
+    if (usage.monthlyCost > this.threshold) {
+      console.warn(`⚠️ Monthly cost ($${usage.monthlyCost}) exceeded threshold ($${this.threshold})`);
+      return false;
+    }
+    
+    return true;
+  }
+}
+
+// Usage
+const monitor = new UsageMonitor(client, 100); // $100 threshold
+
+if (await monitor.check()) {
+  const instance = await client.instances.create({ name: 'my-agent' });
+  await instance.run('Build something');
+}
+```
+
+## Pricing Information
+
+Pricing is based on:
+- **`Token usage`**: Charged per token consumed
+- **`Model selection`**: Different models have different rates
+- **`Instance uptime`**: VM running time
+- **`Storage`**: Persistent storage costs
+
+<Tip>
+  Check the in10nt dashboard for current pricing details
+</Tip>
+
+## API Endpoints
+
+### Token Usage
+
+```
+GET /usage/tokens
+```
+
+Returns monthly and total token usage with costs.
+
+### General Stats
+
+```
+GET /stats
+```
+
+Returns general account statistics (legacy).
+
