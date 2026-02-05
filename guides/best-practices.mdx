@@ -3,418 +3,139 @@ title: "Best Practices"
 description: "Recommended patterns and practices"
 ---
 
-## Instance Lifecycle Management
-
-Always clean up instances when done:
+## Cleanup Instances
 
 ```javascript
-class AgentSession {
-  constructor(client, name) {
-    this.client = client;
-    this.name = name;
-    this.instance = null;
-  }
-
-  async start(options = {}) {
-    this.instance = await this.client.instances.create({
-      name: this.name,
-      ...options
-    });
-    return this.instance;
-  }
-
-  async run(prompt, options = {}) {
-    if (!this.instance) {
-      throw new Error('Session not started');
-    }
-    return this.instance.run(prompt, options);
-  }
-
-  async close() {
-    if (this.instance) {
-      await this.instance.destroy();
-      this.instance = null;
-    }
-  }
-}
-
-// Usage
-const session = new AgentSession(client, 'my-session');
-await session.start();
+const instance = await client.instances.create({
+  name: 'my-session',
+  description: 'Session'
+});
 
 try {
-  await session.run('Task 1');
-  await session.run('Task 2');
+  await instance.run('Task 1');
+  await instance.run('Task 2');
 } finally {
-  await session.close(); // Always cleanup
+  await instance.destroy(); // Always cleanup
 }
 ```
 
-## Template Caching
-
-Cache templates to avoid rebuilding:
+## Reuse Templates
 
 ```javascript
-class TemplateCache {
-  constructor(client) {
-    this.client = client;
-    this.cache = new Map();
-  }
+// Check if template exists before creating
+const templates = await client.templates.list();
+let template = templates.find(t => t.name === 'python-ml');
 
-  async getOrCreate(name, imageConfig) {
-    if (this.cache.has(name)) {
-      return this.cache.get(name);
-    }
-
-    // Check if template exists
-    const templates = await this.client.templates.list();
-    let template = templates.find(t => t.name === name);
-
-    if (!template) {
-      template = await this.client.templates.create({
-        name,
-        ...imageConfig
-      });
-      await template.waitUntilReady();
-    }
-
-    this.cache.set(name, template);
-    return template;
-  }
+if (!template) {
+  template = await client.templates.create({
+    name: 'python-ml',
+    image: 'python:3.11-slim',
+    registryType: 'dockerhub'
+  });
+  await template.waitUntilReady();
 }
-
-// Usage
-const cache = new TemplateCache(client);
-const template = await cache.getOrCreate('python-ml', {
-  image: 'python:3.11-slim',
-  registryType: 'dockerhub'
-});
-```
-
-## Rate Limiting & Retries
-
-Implement exponential backoff for rate limits:
-
-```javascript
-class RateLimitedClient extends In10ntClient {
-  async request(method, path, data) {
-    const maxRetries = 3;
-    let retries = 0;
-
-    while (retries < maxRetries) {
-      try {
-        return await super.request(method, path, data);
-      } catch (error) {
-        if (error.message.includes('429') && retries < maxRetries - 1) {
-          // Rate limited - exponential backoff
-          const delay = Math.pow(2, retries) * 1000;
-          console.log(`Rate limited, retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          retries++;
-        } else {
-          throw error;
-        }
-      }
-    }
-  }
-}
-
-// Usage
-const client = new RateLimitedClient({
-  apiKey: process.env.IN10NT_API_KEY
-});
 ```
 
 ## Error Handling
 
-Handle different error types appropriately:
-
 ```javascript
-async function safeRun(instance, prompt, options = {}) {
-  try {
-    return await instance.run(prompt, options);
-  } catch (error) {
-    if (error.message.includes('Instance with name')) {
-      // 409 Conflict - name already exists
-      console.error('Choose a different name');
-      throw new Error('DUPLICATE_NAME');
-    }
-    
-    if (error.message.includes('Instance not found')) {
-      // 404 - instance doesn't exist
-      console.error('Create instance first');
-      throw new Error('INSTANCE_NOT_FOUND');
-    }
-    
-    if (error.message.includes('timeout')) {
-      // Timeout error
-      console.error('Task timed out');
-      throw new Error('TIMEOUT');
-    }
-    
-    if (error.message.includes('Agent server failed')) {
-      // Health check timeout
-      console.error('Agent server not responding');
-      throw new Error('HEALTH_CHECK_FAILED');
-    }
-    
-    // Unknown error
-    console.error('Unexpected error:', error.message);
-    throw error;
+try {
+  await instance.run('Build something');
+} catch (error) {
+  if (error.message.includes('timeout')) {
+    console.error('Task timed out');
+  } else if (error.message.includes('Instance with name')) {
+    console.error('Name already exists');
+  } else if (error.message.includes('not found')) {
+    console.error('Instance not found');
   }
 }
 ```
 
-## Environment Variables
-
-Store sensitive data in environment variables:
+## Use Environment Variables
 
 ```javascript
-// .env file
-IN10NT_API_KEY=your_api_key
-REGISTRY_USER=your_username
-REGISTRY_PASS=your_password
+// .env
+IN10NT_API_KEY=your_key
 
-// Load with dotenv
+// code
 import 'dotenv/config';
-import { In10ntClient } from '@in10nt/sdk';
-
 const client = new In10ntClient({
   apiKey: process.env.IN10NT_API_KEY
-});
-
-const template = await client.templates.create({
-  name: 'private-env',
-  image: 'registry.example.com/image:latest',
-  registryType: 'private',
-  registryAuth: {
-    username: process.env.REGISTRY_USER,
-    password: process.env.REGISTRY_PASS
-  }
 });
 ```
 
 <Warning>
-  Never commit `.env` files to version control. Add them to `.gitignore`
+  Never commit `.env` to git. Add to `.gitignore`
 </Warning>
 
 ## Cost Optimization
 
-### Reuse Instances
-
-Maintain conversation context instead of creating new instances:
-
 ```javascript
-// ❌ Expensive - creates 3 instances
-const inst1 = await client.instances.create({ name: 'task1' });
+// ❌ Expensive: 3 instances
+const inst1 = await client.instances.create({
+  name: 'task1',
+  description: 'Task 1'
+});
 await inst1.run('Task 1');
+// ... repeat for task2, task3
 
-const inst2 = await client.instances.create({ name: 'task2' });
-await inst2.run('Task 2');
-
-const inst3 = await client.instances.create({ name: 'task3' });
-await inst3.run('Task 3');
-
-// ✅ Cost-effective - reuses one instance
-const instance = await client.instances.create({ name: 'session' });
+// ✅ Efficient: 1 instance
+const instance = await client.instances.create({
+  name: 'session',
+  description: 'Multi-task session'
+});
 await instance.run('Task 1');
 await instance.run('Task 2');
 await instance.run('Task 3');
 ```
 
-### Set Reasonable Timeouts
-
-Prevent runaway costs with timeouts:
+### Set Timeouts
 
 ```javascript
-const result = await instance.run('Complex task', {
-  timeout: 120000 // 2 minutes max
+await instance.run('Complex task', {
+  timeout: 120000  // 2 min max
 });
 ```
 
 ### Monitor Usage
 
-Track usage regularly:
-
 ```javascript
-setInterval(async () => {
-  const usage = await client.usage.getTokenUsage();
-  console.log(`Monthly cost: $${usage.monthlyCost}`);
-  
-  if (usage.monthlyCost > 100) {
-    console.warn('⚠️ Monthly cost exceeded $100');
-  }
-}, 3600000); // Check every hour
-```
-
-## Naming Conventions
-
-Use clear, descriptive names:
-
-```javascript
-// ❌ Bad
-await client.instances.create({ name: 'inst1' });
-await client.templates.create({ name: 'tmpl' });
-
-// ✅ Good
-await client.instances.create({ name: 'user-api-builder' });
-await client.templates.create({ name: 'python-ml-cuda-12' });
-```
-
-## Logging
-
-Implement comprehensive logging:
-
-```javascript
-class LoggedClient extends In10ntClient {
-  async request(method, path, data) {
-    console.log(`[${new Date().toISOString()}] ${method} ${path}`);
-    
-    try {
-      const result = await super.request(method, path, data);
-      console.log(`[${new Date().toISOString()}] Success: ${method} ${path}`);
-      return result;
-    } catch (error) {
-      console.error(`[${new Date().toISOString()}] Error: ${method} ${path}`, error.message);
-      throw error;
-    }
-  }
+const usage = await client.usage.getTokenUsage();
+if (usage.monthlyCost > 100) {
+  console.warn('Cost threshold exceeded');
 }
 ```
 
-## Graceful Shutdown
-
-Handle process termination gracefully:
+## Naming
 
 ```javascript
-const activeInstances = new Set();
+// ✅ Clear names
+'user-api-builder'
+'python-ml-v2'
+'discord-bot-prod'
 
-process.on('SIGINT', async () => {
-  console.log('Shutting down gracefully...');
-  
-  for (const instance of activeInstances) {
-    try {
-      await instance.destroy();
-    } catch (error) {
-      console.error(`Failed to destroy ${instance.instanceId}:`, error.message);
-    }
-  }
-  
-  process.exit(0);
-});
-
-// Track instances
-const instance = await client.instances.create({ name: 'my-agent' });
-activeInstances.add(instance);
-
-// ... use instance ...
-
-// Cleanup
-await instance.destroy();
-activeInstances.delete(instance);
+// ❌ Vague names
+'inst1'
+'tmpl'
+'test'
 ```
 
-## Configuration Management
-
-Centralize configuration:
+## Performance
 
 ```javascript
-// config.js
-export const config = {
-  apiKey: process.env.IN10NT_API_KEY,
-  baseURL: process.env.IN10NT_BASE_URL || 'https://in10t-api-v2.fly.dev',
-  defaultTimeout: 480000,
-  defaultModel: 'anthropic/claude-sonnet-4.5',
-  templates: {
-    python: {
-      name: 'python-ml',
-      image: 'python:3.11-slim',
-      registryType: 'dockerhub'
-    },
-    node: {
-      name: 'node-dev',
-      image: 'node:20-alpine',
-      registryType: 'dockerhub'
-    }
-  }
-};
-
-// app.js
-import { In10ntClient } from '@in10nt/sdk';
-import { config } from './config.js';
-
-const client = new In10ntClient({
-  apiKey: config.apiKey,
-  baseURL: config.baseURL
-});
-```
-
-## Testing Strategies
-
-Separate test and production environments:
-
-```javascript
-const client = new In10ntClient({
-  apiKey: process.env.NODE_ENV === 'production'
-    ? process.env.IN10NT_API_KEY_PROD
-    : process.env.IN10NT_API_KEY_TEST
-});
-
-// Use prefixes for test instances
-const instanceName = process.env.NODE_ENV === 'production'
-  ? 'prod-api-builder'
-  : 'test-api-builder';
-
-const instance = await client.instances.create({ name: instanceName });
-```
-
-## Performance Tips
-
-### Parallel Operations
-
-Run independent operations in parallel:
-
-```javascript
-// ❌ Sequential (slow)
-const inst1 = await client.instances.create({ name: 'agent-1' });
-const inst2 = await client.instances.create({ name: 'agent-2' });
-const inst3 = await client.instances.create({ name: 'agent-3' });
-
 // ✅ Parallel (fast)
 const [inst1, inst2, inst3] = await Promise.all([
-  client.instances.create({ name: 'agent-1' }),
-  client.instances.create({ name: 'agent-2' }),
-  client.instances.create({ name: 'agent-3' })
+  client.instances.create({ name: 'agent-1', description: 'Agent 1' }),
+  client.instances.create({ name: 'agent-2', description: 'Agent 2' }),
+  client.instances.create({ name: 'agent-3', description: 'Agent 3' })
 ]);
 ```
 
-### Skip Health Checks for Testing
+## Security
 
-Speed up tests by skipping health checks:
-
-```javascript
-// In tests
-const result = await instance.run('Quick test', {
-  waitForHealth: false,
-  timeout: 30000
-});
-```
-
-## Security Best Practices
-
-1. **`Never log API keys`**: Sanitize logs
-2. **`Use environment variables`**: Don't hardcode secrets
-3. **`Rotate keys regularly`**: Change API keys periodically
-4. **`Limit permissions`**: Use separate keys for different environments
-5. **`Validate inputs`**: Sanitize user inputs before passing to agents
-
-```javascript
-// Sanitize logs
-function sanitizeLog(message) {
-  return message.replace(/Bearer\s+\w+/g, 'Bearer [REDACTED]');
-}
-
-console.log(sanitizeLog('Authorization: Bearer sk_live_abc123'));
-// Output: Authorization: Bearer [REDACTED]
-```
+- Never log API keys
+- Use env vars for secrets
+- Rotate keys regularly
+- Separate dev/prod keys
 

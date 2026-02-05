@@ -5,30 +5,27 @@ description: "Create custom Docker environments"
 
 ## Overview
 
-Container templates let you create custom environments by layering your base Docker image with in10nt agent infrastructure.
+Build custom agent environments from any Docker image.
 
 <Note>
-  Container templates create custom Docker images. For cloning existing instances with their workspace/files, use `instances.createFromTemplate()` instead
+  **Container templates** = Custom Docker environments  
+  **Instance cloning** (`instance.save()`) = Copy workspace files
 </Note>
 
 ## Create Template
 
-Create a custom environment from a Docker image:
-
 ```javascript
 const template = await client.templates.create({
-  name: 'python-ml',              // Required: Human-readable name
-  description: 'Python ML env',   // Optional: Description
-  image: 'python:3.11-slim',      // Required: Base Docker image
-  registryType: 'dockerhub',      // Required: dockerhub | private | gcr
-  registryAuth: {                 // Optional: For private registries
+  name: 'python-ml',
+  image: 'python:3.11-slim',
+  registryType: 'dockerhub',
+  registryAuth: {  // Optional: for private registries
     username: 'user',
     password: 'pass'
   }
 });
 
-console.log(`Template ID: ${template.templateId}`);
-console.log(`Status: ${template.status}`); // "building"
+await template.waitUntilReady();  // Wait for build
 ```
 
 ### Parameters
@@ -43,100 +40,41 @@ console.log(`Status: ${template.status}`); // "building"
 
 ### Registry Types
 
-- **`dockerhub`**: Public Docker Hub images
-- **`private`**: Private Docker registries
-- **`gcr`**: Google Container Registry
+- `dockerhub` - Public Docker Hub
+- `private` - Private registries  
+- `gcr` - Google Container Registry
 
-### Response
+### Build Status
 
-```javascript
-{
-  templateId: "tmpl_1704588123456",
-  name: "python-ml",
-  image: "python:3.11-slim",
-  status: "building",  // building → ready | failed
-  createdAt: "2025-01-06T..."
-}
-```
+- `building` → `ready` or `failed`
 
-## Wait Until Ready
-
-Wait for template to finish building:
+## Wait for Build
 
 ```javascript
-const template = await client.templates.create({
-  name: 'ml-env',
-  image: 'nvidia/cuda:12.2-runtime',
-  registryType: 'dockerhub'
-});
-
 await template.waitUntilReady({
-  timeout: 300000,      // 5 minutes (default)
-  pollInterval: 5000    // Check every 5 seconds (default)
+  timeout: 300000,     // 5 min (default)
+  pollInterval: 5000   // Check every 5s
 });
-
-console.log(`Ready! Platform image: ${template.platformImage}`);
 ```
 
-### Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `timeout` | `number` | `300000` | Maximum wait time in ms |
-| `pollInterval` | `number` | `5000` | Polling interval in ms |
-
-## List Templates
-
-Get all your templates:
+## List & Get Templates
 
 ```javascript
+// List all
 const templates = await client.templates.list();
 
-templates.forEach(template => {
-  console.log(`${template.name}: ${template.status}`);
-});
-```
-
-## Get Template Status
-
-Check template build status:
-
-```javascript
-const template = await client.templates.get('tmpl_1704588123456');
-
-console.log(`Status: ${template.status}`);
-if (template.status === 'failed') {
-  console.error(`Error: ${template.error}`);
-}
-```
-
-### Status Values
-
-- **`building`**: Template is being built
-- **`ready`**: Template is ready to use
-- **`failed`**: Build failed (check `error` field)
-
-## Delete Template
-
-Delete a template:
-
-```javascript
-await template.delete();
-```
-
-Or by ID:
-
-```javascript
+// Get specific template
 const template = await client.templates.get('tmpl_123');
+console.log(template.status);  // building | ready | failed
+
+// Delete template
 await template.delete();
 ```
 
-## Use Template with Instance
-
-Once a template is ready, use it to create instances:
+## Use Template
 
 ```javascript
-// Create and wait for template
+// Build template
 const template = await client.templates.create({
   name: 'ml-env',
   image: 'python:3.11-slim',
@@ -145,18 +83,17 @@ const template = await client.templates.create({
 
 await template.waitUntilReady();
 
-// Create instance with template
+// Use it
 const instance = await client.instances.create({
   name: 'ml-agent',
+  description: 'ML tasks',
   templateId: template.templateId
 });
 
-const result = await instance.run('Train a classifier on data.csv');
+await instance.run('Train classifier');
 ```
 
-## Private Registry Authentication
-
-For private registries, provide authentication:
+## Private Registry
 
 ```javascript
 const template = await client.templates.create({
@@ -171,80 +108,76 @@ const template = await client.templates.create({
 ```
 
 <Warning>
-  Never hardcode registry credentials. Use environment variables or secret management
+  Use environment variables for credentials
 </Warning>
 
-## Common Use Cases
-
-### Python ML Environment
+## Quick Examples
 
 ```javascript
-const mlTemplate = await client.templates.create({
-  name: 'python-ml',
+// Python
+await client.templates.create({
+  name: 'python',
   image: 'python:3.11-slim',
-  registryType: 'dockerhub',
-  description: 'Python with ML libraries'
+  registryType: 'dockerhub'
 });
 
-await mlTemplate.waitUntilReady();
-```
-
-### Node.js Development
-
-```javascript
-const nodeTemplate = await client.templates.create({
-  name: 'node-dev',
+// Node.js
+await client.templates.create({
+  name: 'node',
   image: 'node:20-alpine',
-  registryType: 'dockerhub',
-  description: 'Node.js 20 development'
+  registryType: 'dockerhub'
 });
 
-await nodeTemplate.waitUntilReady();
-```
-
-### CUDA/GPU Environment
-
-```javascript
-const gpuTemplate = await client.templates.create({
-  name: 'cuda-env',
+// CUDA/GPU
+await client.templates.create({
+  name: 'cuda',
   image: 'nvidia/cuda:12.2-runtime',
-  registryType: 'dockerhub',
-  description: 'NVIDIA CUDA 12.2'
+  registryType: 'dockerhub'
 });
-
-await gpuTemplate.waitUntilReady();
 ```
 
-## Error Handling
+## Template vs Instance Clone
 
-```javascript
-try {
-  const template = await client.templates.create({
-    name: 'my-env',
-    image: 'python:3.11-slim',
-    registryType: 'dockerhub'
-  });
-  
-  await template.waitUntilReady({ timeout: 300000 });
-  
-} catch (error) {
-  if (error.message.includes('Template build failed')) {
-    console.error('Build failed - check image and credentials');
-  } else if (error.message.includes('timeout')) {
-    console.error('Build took too long');
-  } else {
-    console.error('Unexpected error:', error.message);
-  }
-}
-```
-
-## Template vs Instance Cloning
-
-| Feature | Container Templates | Instance Cloning |
-|---------|-------------------|------------------|
-| What it does | Layers base Docker image with agent infrastructure | Clones existing instance workspace |
-| Use case | Custom base environments (Python, Node, etc.) | Reuse configured workspaces |
-| Method | `client.templates.create()` | `client.instances.createFromTemplate()` |
+| Feature | Container Template | Instance Clone |
+|---------|-------------------|----------------|
+| Method | `templates.create()` | `instance.save()` |
+| Creates | Custom Docker environment | Workspace snapshot |
 | Build time | 2-5 minutes | Instant |
-| Files included | Only base image files | All workspace files |
+| Use case | Base environments | Reuse workspaces |
+
+## HTTP API Reference
+
+### Create Template
+
+```bash
+curl -X POST https://in10t-api-v2.fly.dev/container-templates \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "python-ml",
+    "image": "python:3.11-slim",
+    "registryType": "dockerhub"
+  }'
+```
+
+### List Templates
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/container-templates
+```
+
+### Get Template Status
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/container-templates/{templateId}/status
+```
+
+### Delete Template
+
+```bash
+curl -X DELETE https://in10t-api-v2.fly.dev/container-templates/{templateId} \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
 

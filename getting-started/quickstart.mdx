@@ -33,22 +33,23 @@ const client = new In10ntClient({
 
 ## Create Your First Agent
 
-Create an instance and run your first task:
-
 ```javascript
-// Create instance
 const instance = await client.instances.create({
-  name: 'my-first-agent'
+  name: 'my-first-agent',
+  description: 'My first coding agent'
 });
 
-// Run a task
 const result = await instance.run(
-  'Create a simple Express.js server with a health check endpoint'
+  'Create a simple Express.js server with health check'
 );
 
 console.log(result.response);
-console.log(`Tokens used: ${result.tokensUsed}`);
+console.log(`Tokens: ${result.tokensUsed}`);
 ```
+
+<Note>
+  Both `name` and `description` are required when creating instances
+</Note>
 
 ## Next Steps
 

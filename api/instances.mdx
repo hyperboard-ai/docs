@@ -9,34 +9,37 @@ Instances are VMs running the in10nt agent server. They provide isolated environ
 
 ## Create Instance
 
-Create a new VM instance:
-
 ```javascript
 const instance = await client.instances.create({
-  name: 'my-agent',              // Optional: Human-readable name
-  description: 'My agent',       // Optional: Description
-  templateId: 'tmpl_12345',      // Optional: Use custom template
-  vmImage: 'custom:latest',      // Optional: Direct image (overrides template)
-  vmSize: 'shared-cpu-4x',       // Optional: VM size
-  region: 'iad',                 // Optional: Region code
-  env: {                         // Optional: Environment variables
-    API_KEY: 'secret'
-  }
+  name: 'my-agent',
+  description: 'My coding agent',
+  agentType: 'opencode',          // 'opencode' or 'moltbot'
+  templateId: 'tmpl_12345',       // Optional: custom template
+  vmSize: 'shared-cpu-4x',        // Optional: VM size
+  region: 'iad',                  // Optional: region
+  env: { API_KEY: 'secret' }      // Optional: env vars
 });
-
-console.log(`Instance ID: ${instance.instanceId}`);
-console.log(`Status: ${instance.status}`);
-console.log(`Agent URL: ${instance.agentUrl}`);
 ```
+
+### Agent Types
+
+| Type | Description | Min Size |
+|------|-------------|----------|
+| `opencode` | Default agent (OpenCode) | `shared-cpu-1x` |
+| `moltbot` | Moltbot/Clawdbot agent | `shared-cpu-8x` (2GB) |
+
+<Note>
+  Moltbot requires at least 2GB RAM and automatically upgrades to `shared-cpu-8x` if needed
+</Note>
 
 ### Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `name` | `string` | Human-readable instance name |
-| `description` | `string` | Instance description |
-| `templateId` | `string` | Container template ID to use |
-| `vmImage` | `string` | Direct Docker image (overrides template) |
+| `name` | `string` | **Required** - Instance name |
+| `description` | `string` | **Required** - Description |
+| `agentType` | `string` | Agent type: `opencode` or `moltbot` (default: `opencode`) |
+| `templateId` | `string` | Container template ID |
 | `vmSize` | `string` | VM size (default: `shared-cpu-4x`) |
 | `region` | `string` | Region code (default: `iad`) |
 | `env` | `object` | Environment variables |
@@ -47,10 +50,59 @@ console.log(`Agent URL: ${instance.agentUrl}`);
 {
   instanceId: "inst_abc123",
   name: "my-agent",
-  status: "running",
+  status: "healthy",
   agentUrl: "http://machine-id.vm.app.internal:3000",
   createdAt: "2025-01-06T..."
 }
+```
+
+## Integrations
+
+Connect your agent to external services:
+
+```javascript
+const instance = await client.instances.create({
+  name: 'discord-bot',
+  description: 'Discord bot agent',
+  agentType: 'moltbot',  // Required for Discord
+  integrations: ['Discord', 'GitHub'],
+  integrationEnv: {
+    DISCORD_BOT_TOKEN: 'xxx',
+    DISCORD_GUILD_ID: 'xxx',
+    DISCORD_CHANNEL_ID: 'xxx',
+    GITHUB_TOKEN: 'xxx'
+  }
+});
+```
+
+### Supported Integrations
+
+| Integration | Required Env Vars |
+|-------------|-------------------|
+| `Discord` | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_ID` |
+| `Slack` | `SLACK_BOT_TOKEN` |
+| `GitHub` | `GITHUB_TOKEN` |
+| `Notion` | `NOTION_API_TOKEN` |
+| `Telegram` | `TELEGRAM_BOT_TOKEN` |
+| `Jira` | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` |
+| `Voice` | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
+
+<Note>
+  Voice integration supports both Twilio (required) and ElevenLabs (optional). Add `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` for text-to-speech.
+</Note>
+
+<Warning>
+  Discord integration only works with `agentType: 'moltbot'`
+</Warning>
+
+### Update Integrations
+
+```javascript
+// Update after creation
+await client.client.post(`/instances/${instanceId}/integrations`, {
+  integrations: ['GitHub', 'Notion'],
+  integrationEnv: { GITHUB_TOKEN: 'new_token' }
+});
 ```
 
 ## List Instances
@@ -81,7 +133,7 @@ const instance = await client.instances.getByName('my-agent');
 
 ## Run Task
 
-Execute a coding task on an instance:
+Execute a coding task on an instance (works for both OpenCode and Moltbot):
 
 ```javascript
 const result = await instance.run(
@@ -90,7 +142,6 @@ const result = await instance.run(
     model: 'anthropic/claude-sonnet-4.5',  // Optional
     provider: 'openrouter',                 // Optional
     timeout: 480000,                        // Optional: 8 minutes
-    waitForHealth: true,                    // Optional: Auto health check
     system: 'Custom system prompt'          // Optional
   }
 );
@@ -100,21 +151,79 @@ console.log(`Tokens used: ${result.tokensUsed}`);
 console.log(`Duration: ${result.duration_ms}ms`);
 ```
 
+<Note>
+  The same `.run()` method works for both OpenCode and Moltbot instances. Moltbot instances automatically use optimized internal routing.
+</Note>
+
+### Complete Example with All Options
+
+```javascript
+// Works for both OpenCode and Moltbot
+const result = await instance.run(
+  'Build a REST API with authentication',
+  {
+    model: 'anthropic/claude-sonnet-4.5',
+    provider: 'openrouter',
+    max_tokens: 8000,
+    system: 'You are a senior backend engineer',
+    timeout: 600000,        // 10 minutes
+    autoTools: true,        // Enable automatic tools
+    async: false            // Synchronous execution
+  }
+);
+```
+
 ### Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `model` | `string` | `anthropic/claude-sonnet-4.5` | LLM model to use |
+| `model` | `string` | `anthropic/claude-sonnet-4.5` | LLM model |
 | `provider` | `string` | `openrouter` | Model provider |
-| `timeout` | `number` | `480000` | Timeout in milliseconds |
-| `waitForHealth` | `boolean` | `true` | Auto health check before running |
+| `max_tokens` | `number` | - | Max response tokens |
 | `system` | `string` | - | Custom system prompt |
-| `tools` | `array` | - | Custom tools |
+| `timeout` | `number` | `480000` | Timeout in ms (8 min default) |
+| `tools` | `array` | - | Custom tools for the agent |
 | `autoTools` | `boolean` | `true` | Enable automatic tool usage |
+| `async` | `boolean` | `false` | Run task asynchronously |
 
-<Tip>
-  The SDK automatically waits for the instance to be healthy before running tasks when `waitForHealth: true`
-</Tip>
+## Async Tasks
+
+Tasks run asynchronously and return a `taskId` for polling:
+
+```javascript
+// Start task (returns immediately)
+const response = await instance.run('Build a web app');
+
+if (response.taskId) {
+  // Poll until complete
+  const result = await instance.pollTask(response.taskId);
+  console.log(result.response);
+}
+```
+
+### Poll Task
+
+```javascript
+const result = await instance.pollTask(taskId, {
+  pollInterval: 2000,    // Check every 2s
+  maxPollTime: 600000    // Timeout after 10min
+});
+```
+
+### Get Task Status
+
+```javascript
+// Single status check (no polling)
+const status = await instance.getTaskStatus(taskId);
+// Returns: { status: 'processing' | 'completed' | 'failed' }
+```
+
+### List Tasks
+
+```javascript
+const tasks = await instance.listTasks();
+// Returns: { tasks: [{ taskId, status, createdAt }] }
+```
 
 ## Conversation Context
 
@@ -163,95 +272,311 @@ console.log(`Current status: ${instance.status}`);
 
 ### Stop Instance
 
-Stop a running instance:
-
 ```javascript
 await instance.stop();
 ```
 
-### Destroy Instance
+### Restart Instance
 
-Permanently delete an instance:
+Recreate a destroyed machine:
+
+```javascript
+await client.client.post(`/instances/${instanceId}/restart`);
+// Recreates machine, reuses volume if available
+```
+
+### Destroy Instance
 
 ```javascript
 await instance.destroy();
 ```
 
 <Warning>
-  Destroying an instance is permanent and cannot be undone
+  Destroy is permanent. Use `stop()` if you plan to restart later.
 </Warning>
 
-## Clone Instance
+## Snapshots
 
-Create a new instance from an existing one (clones workspace and configuration):
+Save and restore workspace state:
 
 ```javascript
+// Create snapshot
+const snapshot = await client.client.post(
+  `/instances/${instanceId}/snapshot`
+);
+
+// Restore from snapshot
+const instance = await client.instances.create({
+  name: 'restored',
+  description: 'Restored workspace',
+  snapshotId: snapshot.snapshotId
+});
+```
+
+## Ports & Proxying
+
+Access dev servers running in your instance:
+
+```javascript
+// Discover active ports
+const ports = await client.client.get(`/instances/${instanceId}/ports`);
+// Returns: { ports: [5173, 3000], proxyPattern: '...' }
+
+// Access via proxy URL
+const url = `https://in10t-api-v2.fly.dev/instances/${instanceId}/ports/5173/`;
+```
+
+### Register Ports Manually
+
+```javascript
+await client.client.post(`/instances/${instanceId}/open-ports`, {
+  ports: [5173, 3000, 8080]
+});
+```
+
+## Save & Clone Instance
+
+Save instance workspace as reusable template:
+
+```javascript
+// Save (requires Firestore config)
+const saved = await instance.save('my-template');
+
+// Clone later
 const clone = await client.instances.createFromTemplate({
-  templateName: 'base-instance',
-  newInstanceName: 'cloned-instance'
+  templateName: 'my-template',
+  newInstanceName: 'new-instance'
 });
 ```
 
 <Note>
-  This is different from container templates - it clones an existing instance's workspace, files, and configuration
+  Requires `db` and `userId` in client config. Different from container templates.
 </Note>
+
+## Filesystem
+
+Get workspace file tree:
+
+```javascript
+const tree = await client.client.get(
+  `/instances/${instanceId}/filesystem?depth=10`
+);
+```
 
 ## Stream Logs
 
-Stream real-time logs from an instance:
-
 ```javascript
-// Requires 'eventsource' package in Node.js
+// Node.js: install 'eventsource' package first
 const stopStreaming = await instance.streamLogs((log) => {
   console.log(`[${log.type}] ${log.message}`);
 });
 
-// Run task
-await instance.run('Build a web application');
-
-// Stop streaming when done
+await instance.run('Build a web app');
 stopStreaming();
 ```
 
-## Example Workflows
+## Quick Examples
 
-### Quick Task
-
-```javascript
-const instance = await client.instances.create({ name: 'quick-task' });
-const result = await instance.run('Create a calculator function');
-await instance.destroy();
-```
-
-### Long-Running Session
-
-```javascript
-const instance = await client.instances.create({ name: 'session' });
-
-try {
-  await instance.run('Initialize project structure');
-  await instance.run('Add user authentication');
-  await instance.run('Write tests');
-  
-  const changes = await instance.getChanges();
-  console.log('All changes:', changes);
-} finally {
-  await instance.destroy();
-}
-```
-
-### Custom Environment
+### Basic Usage
 
 ```javascript
 const instance = await client.instances.create({
-  name: 'python-ml',
-  templateId: 'tmpl_python_ml',
-  env: {
-    PYTHONPATH: '/workspace',
-    MODEL_VERSION: '2.0'
+  name: 'my-agent',
+  description: 'Quick task'
+});
+
+await instance.run('Create a REST API');
+await instance.destroy();
+```
+
+### Multi-Step Session
+
+```javascript
+const instance = await client.instances.create({
+  name: 'session',
+  description: 'Multi-step project'
+});
+
+await instance.run('Initialize project');
+await instance.run('Add authentication');
+await instance.run('Write tests');
+
+const changes = await instance.getChanges();
+await instance.destroy();
+```
+
+### Discord Bot (Moltbot)
+
+```javascript
+const bot = await client.instances.create({
+  name: 'discord-bot',
+  description: 'My Discord bot',
+  agentType: 'moltbot',
+  integrations: ['Discord'],
+  integrationEnv: {
+    DISCORD_BOT_TOKEN: process.env.DISCORD_TOKEN,
+    DISCORD_GUILD_ID: '123456',
+    DISCORD_CHANNEL_ID: '789012'
   }
 });
 
-const result = await instance.run('Train a classifier on data.csv');
+// Bot automatically responds to Discord messages
+// You can also run tasks directly via HTTP:
+await bot.run('Add a /help command that lists all available features');
+```
+
+### Voice Agent (Twilio + ElevenLabs)
+
+```javascript
+const voiceAgent = await client.instances.create({
+  name: 'voice-assistant',
+  description: 'Voice-enabled AI agent',
+  integrations: ['Voice'],
+  integrationEnv: {
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_FROM_NUMBER: '+1234567890',
+    ELEVENLABS_API_KEY: process.env.ELEVENLABS_KEY,
+    ELEVENLABS_VOICE_ID: 'voice_id_here'
+  }
+});
+```
+
+### Moltbot with Custom Options
+
+```javascript
+const moltbot = await client.instances.create({
+  name: 'custom-moltbot',
+  description: 'Moltbot with custom settings',
+  agentType: 'moltbot'
+});
+
+// Run task with custom options (same API as OpenCode)
+const result = await moltbot.run(
+  'Analyze this codebase and suggest improvements',
+  {
+    model: 'anthropic/claude-sonnet-4.5',
+    max_tokens: 16000,
+    timeout: 900000  // 15 minutes for complex tasks
+  }
+);
+```
+
+---
+
+## HTTP API Reference
+
+Base URL: `https://in10t-api-v2.fly.dev`  
+Auth: `Authorization: Bearer YOUR_API_KEY` or `X-API-Key: YOUR_API_KEY`
+
+### Create Instance
+
+```bash
+curl -X POST https://in10t-api-v2.fly.dev/instances \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-agent",
+    "description": "My coding agent",
+    "agentType": "opencode",
+    "region": "iad",
+    "vmSize": "shared-cpu-4x"
+  }'
+```
+
+### List Instances
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/instances
+```
+
+### Get Instance
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/instances/{instanceId}
+```
+
+### Run Task (OpenCode & Moltbot)
+
+```bash
+curl -X POST https://in10t-api-v2.fly.dev/instances/{instanceId}/run \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Build a REST API with user CRUD",
+    "model": "anthropic/claude-sonnet-4.5",
+    "timeout": 480000,
+    "max_tokens": 8000
+  }'
+```
+
+| Body Param | Type | Required | Description |
+|------------|------|----------|-------------|
+| `prompt` | string | Yes | Task prompt |
+| `model` | string | No | LLM model (default: anthropic/claude-sonnet-4.5) |
+| `provider` | string | No | Model provider (default: openrouter) |
+| `timeout` | number | No | Timeout in ms (default: 480000) |
+| `max_tokens` | number | No | Max response tokens |
+| `system` | string | No | Custom system prompt |
+| `async` | boolean | No | Run asynchronously |
+
+### Stop Instance
+
+```bash
+curl -X POST https://in10t-api-v2.fly.dev/instances/{instanceId}/stop \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Destroy Instance
+
+```bash
+curl -X DELETE https://in10t-api-v2.fly.dev/instances/{instanceId} \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Restart Instance
+
+```bash
+curl -X POST https://in10t-api-v2.fly.dev/instances/{instanceId}/restart \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Get Health
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/instances/{instanceId}/health
+```
+
+### Get Changes
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  "https://in10t-api-v2.fly.dev/instances/{instanceId}/changes"
+```
+
+### Execute Command
+
+```bash
+curl -X POST https://in10t-api-v2.fly.dev/instances/{instanceId}/execute \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"command": "ls -la /workspace"}'
+```
+
+### List Tasks
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/instances/{instanceId}/tasks
+```
+
+### Get Task Status
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/instances/{instanceId}/tasks/{taskId}
 ```
 
