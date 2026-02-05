@@ -55,8 +55,8 @@
   "navbar": {
     "links": [
       {
-        "label": "GitHub",
-        "href": "https://github.com/in10nt"
+        "label": "Console",
+        "href": "https://console.in10nt.ai"
       }
     ]
   },
