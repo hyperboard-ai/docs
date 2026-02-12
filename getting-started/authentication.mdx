@@ -7,11 +7,31 @@ description: "Authenticate your API requests"
 
 All endpoints (except `/health`) require authentication via API key.
 
-### Using the SDK
+### Using the SDK (Zero-config)
 
-The SDK handles authentication automatically when you provide your API key:
+Set your API key as an environment variable and use the static `Instance` methods:
 
-```javascript
+```bash
+export IN10NT_API_KEY=your_api_key
+```
+
+```typescript
+import { Instance } from '@in10nt/sdk';
+
+// Reads IN10NT_API_KEY automatically
+const instance = await Instance.create({
+  name: 'my-agent',
+  description: 'Agent'
+});
+```
+
+### Using the Client
+
+Pass your API key explicitly when creating a client:
+
+```typescript
+import { In10ntClient } from '@in10nt/sdk';
+
 const client = new In10ntClient({
   apiKey: 'your_api_key'
 });
@@ -27,10 +47,10 @@ export IN10NT_API_KEY=your_api_key
 
 Then initialize the client without explicitly passing the key:
 
-```javascript
-const client = new In10ntClient({
-  apiKey: process.env.IN10NT_API_KEY
-});
+```typescript
+const client = new In10ntClient();
+// or
+const instance = await Instance.create({ name: 'x', description: 'y' });
 ```
 
 ## Direct API Requests
@@ -61,11 +81,17 @@ https://in10t-api-v2.fly.dev
 
 You can override this when initializing the client:
 
-```javascript
+```typescript
 const client = new In10ntClient({
   apiKey: 'your_api_key',
   baseURL: 'https://custom-api-url.com'
 });
+
+// Or with static methods
+const instance = await Instance.create(
+  { name: 'x', description: 'y' },
+  { baseURL: 'https://custom-api-url.com' }
+);
 ```
 
 ## Security Best Practices
@@ -79,4 +105,3 @@ const client = new In10ntClient({
 - Rotate keys regularly
 - Never expose keys in client-side code
 - Use secret management services (AWS Secrets Manager, HashiCorp Vault, etc.)
-

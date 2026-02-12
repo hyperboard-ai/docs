@@ -1,6 +1,6 @@
 ---
 title: "Prebuilt Agents"
-description: "Create reusable agent templates with createFromTemplate"
+description: "Create reusable agent templates with createFromSavedTemplate"
 ---
 
 ## Overview
@@ -9,7 +9,11 @@ Clone configured instances instantly. No repetitive setup, 75% faster.
 
 ## Quick Start
 
-```javascript
+```typescript
+import { Instance, In10ntClient } from '@in10nt/sdk';
+
+const client = new In10ntClient();
+
 // 1. Create and configure base instance
 const base = await client.instances.create({
   name: 'calculator-base',
@@ -18,35 +22,41 @@ const base = await client.instances.create({
 
 await base.run('Setup calculator.py with numpy and pandas');
 
-// 2. Clone instantly
-const clone = await client.instances.createFromTemplate({
+// 2. Snapshot the workspace
+await base.snapshot();
+
+// 3. Clone instantly
+const clone = await client.instances.createFromSavedTemplate({
   templateName: 'calculator-base',
   newInstanceName: 'calc-clone-1'
 });
 
-// 3. Use immediately (inherits all files & deps)
+// 4. Use immediately (inherits all files & deps)
 await clone.run('Calculate average from data.csv');
 ```
 
 ## What's Cloned
 
-✅ **Inherited**: description, env, region, vmSize, all files, installed packages  
-❌ **Not inherited**: name (you provide new name)
+- **Inherited**: description, env, region, vmSize, all files, installed packages
+- **Not inherited**: name (you provide new name)
 
 ## Examples
 
 ### Web Development
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 const webBase = await client.instances.create({
   name: 'web-dev-base',
   description: 'Node, Express, React'
 });
 
 await webBase.run('Setup fullstack env with common packages');
+await webBase.snapshot();
 
 // Clone for each project
-const project = await client.instances.createFromTemplate({
+const project = await client.instances.createFromSavedTemplate({
   templateName: 'web-dev-base',
   newInstanceName: 'ecommerce-site'
 });
@@ -56,15 +66,18 @@ await project.run('Build e-commerce API');
 
 ### Data Science
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 const mlBase = await client.instances.create({
   name: 'ml-base',
   description: 'Python ML stack'
 });
 
 await mlBase.run('Install numpy, pandas, scikit-learn, matplotlib');
+await mlBase.snapshot();
 
-const analysis = await client.instances.createFromTemplate({
+const analysis = await client.instances.createFromSavedTemplate({
   templateName: 'ml-base',
   newInstanceName: 'sales-analysis'
 });
@@ -74,61 +87,64 @@ await analysis.run('Analyze sales trends');
 
 ## Best Practices
 
-```javascript
-// ✅ Clear names with version
+```typescript
+// Clear names with version
 'web-dev-v2'  // Node 18, React 18
 
-// ✅ Document in description
+// Document in description
 const base = await client.instances.create({
   name: 'ml-base-v1',
   description: 'Python 3.11, numpy, pandas, scikit-learn'
 });
 
-// ✅ Test before using
-const test = await client.instances.createFromTemplate({
+// Test before using
+const test = await client.instances.createFromSavedTemplate({
   templateName: 'ml-base-v1',
   newInstanceName: 'test-clone'
 });
 await test.run('Quick test');
 ```
 
+## Manage Saved Templates
+
+```typescript
+const client = new In10ntClient();
+
+// List all saved templates
+const saved = await client.savedTemplates.list();
+
+// Delete old templates
+await client.savedTemplates.delete('old-template');
+```
+
 ## vs Container Templates
 
-| Feature | Instance Clone | Container Template |
+| Feature | Saved Template | Container Template |
 |---------|---------------|-------------------|
-| Method | `createFromTemplate()` | `templates.create()` |
+| Method | `createFromSavedTemplate()` | `client.templates.create()` |
 | Speed | Instant | 2-5 minutes |
 | Clones | Files & deps | Docker image |
 | Use case | Reuse workspace | Custom OS/packages |
 
 ## Save 75% on Setup
 
-```javascript
-// ❌ Setup every time
-for (let i = 0; i < 10; i++) {
-  const agent = await client.instances.create({
-    name: `agent-${i}`,
-    description: 'Agent'
-  });
-  await agent.run('Install packages'); // 5 min each
-  await agent.run('Do work'); // 2 min
-}
-// Total: 70 minutes
+```typescript
+const client = new In10ntClient();
 
-// ✅ Setup once, clone many
+// Setup once, clone many
 const base = await client.instances.create({
   name: 'base',
   description: 'Base agent'
 });
 await base.run('Install packages'); // 5 min once
+await base.snapshot();
 
 for (let i = 0; i < 10; i++) {
-  const clone = await client.instances.createFromTemplate({
+  const clone = await client.instances.createFromSavedTemplate({
     templateName: 'base',
     newInstanceName: `agent-${i}`
   });
   await clone.run('Do work'); // 2 min
 }
-// Total: 25 minutes (75% faster!)
+// Total: 25 minutes (75% faster than setup each time!)
 ```
-

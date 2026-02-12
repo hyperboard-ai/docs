@@ -17,9 +17,27 @@ yarn add @in10nt/sdk
 
 ## Setup
 
-Get your API key from the in10nt dashboard and initialize the client:
+Get your API key from the in10nt dashboard. You can either set it as an environment variable or pass it directly.
 
-```javascript
+### Zero-config path (recommended)
+
+```bash
+export IN10NT_API_KEY=your_api_key
+```
+
+```typescript
+import { Instance } from '@in10nt/sdk';
+
+// Uses IN10NT_API_KEY automatically
+const instance = await Instance.create({
+  name: 'my-first-agent',
+  description: 'My first coding agent'
+});
+```
+
+### Client path
+
+```typescript
 import { In10ntClient } from '@in10nt/sdk';
 
 const client = new In10ntClient({
@@ -27,14 +45,12 @@ const client = new In10ntClient({
 });
 ```
 
-<Tip>
-  You can also use the alias `In10tClient` if you prefer shorter names
-</Tip>
-
 ## Create Your First Agent
 
-```javascript
-const instance = await client.instances.create({
+```typescript
+import { Instance } from '@in10nt/sdk';
+
+const instance = await Instance.create({
   name: 'my-first-agent',
   description: 'My first coding agent'
 });
@@ -45,11 +61,23 @@ const result = await instance.run(
 
 console.log(result.response);
 console.log(`Tokens: ${result.tokensUsed}`);
+
+await instance.destroy();
 ```
 
 <Note>
   Both `name` and `description` are required when creating instances
 </Note>
+
+## Reconnect to an Existing Instance
+
+```typescript
+// By ID
+const instance = await Instance.connect('inst_abc123');
+
+// List all
+const all = await Instance.list();
+```
 
 ## Next Steps
 
@@ -91,4 +119,4 @@ console.log(`Tokens: ${result.tokensUsed}`);
 - **`Maintain context`**: Continue conversations across multiple prompts
 - **`Custom environments`**: Use any Docker image as your base
 - **`Track usage`**: Monitor token consumption and costs
-
+- **`Namespaced sub-modules`**: `instance.tasks.*`, `instance.ports.*`, `instance.files.*`

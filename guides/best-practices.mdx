@@ -5,8 +5,8 @@ description: "Recommended patterns and practices"
 
 ## Cleanup Instances
 
-```javascript
-const instance = await client.instances.create({
+```typescript
+const instance = await Instance.create({
   name: 'my-session',
   description: 'Session'
 });
@@ -21,7 +21,9 @@ try {
 
 ## Reuse Templates
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 // Check if template exists before creating
 const templates = await client.templates.list();
 let template = templates.find(t => t.name === 'python-ml');
@@ -38,30 +40,36 @@ if (!template) {
 
 ## Error Handling
 
-```javascript
+```typescript
+import { Instance, In10ntError, TimeoutError, HealthCheckError } from '@in10nt/sdk';
+
 try {
   await instance.run('Build something');
 } catch (error) {
-  if (error.message.includes('timeout')) {
+  if (error instanceof TimeoutError) {
     console.error('Task timed out');
-  } else if (error.message.includes('Instance with name')) {
-    console.error('Name already exists');
-  } else if (error.message.includes('not found')) {
-    console.error('Instance not found');
+  } else if (error instanceof HealthCheckError) {
+    console.error('Instance not healthy');
+  } else if (error instanceof In10ntError) {
+    console.error(`API error (${error.statusCode}):`, error.message);
   }
 }
 ```
 
 ## Use Environment Variables
 
-```javascript
-// .env
+```bash
+# .env
 IN10NT_API_KEY=your_key
+```
 
-// code
-import 'dotenv/config';
-const client = new In10ntClient({
-  apiKey: process.env.IN10NT_API_KEY
+```typescript
+// Zero-config — reads IN10NT_API_KEY automatically
+import { Instance } from '@in10nt/sdk';
+
+const instance = await Instance.create({
+  name: 'my-agent',
+  description: 'Agent'
 });
 ```
 
@@ -71,36 +79,30 @@ const client = new In10ntClient({
 
 ## Cost Optimization
 
-```javascript
-// ❌ Expensive: 3 instances
-const inst1 = await client.instances.create({
-  name: 'task1',
-  description: 'Task 1'
-});
-await inst1.run('Task 1');
-// ... repeat for task2, task3
-
-// ✅ Efficient: 1 instance
-const instance = await client.instances.create({
+```typescript
+// Reuse one instance for multiple tasks
+const instance = await Instance.create({
   name: 'session',
   description: 'Multi-task session'
 });
 await instance.run('Task 1');
 await instance.run('Task 2');
 await instance.run('Task 3');
+await instance.destroy();
 ```
 
 ### Set Timeouts
 
-```javascript
+```typescript
 await instance.run('Complex task', {
-  timeout: 120000  // 2 min max
+  timeout: 120_000  // 2 min max
 });
 ```
 
 ### Monitor Usage
 
-```javascript
+```typescript
+const client = new In10ntClient();
 const usage = await client.usage.getTokenUsage();
 if (usage.monthlyCost > 100) {
   console.warn('Cost threshold exceeded');
@@ -109,27 +111,37 @@ if (usage.monthlyCost > 100) {
 
 ## Naming
 
-```javascript
-// ✅ Clear names
+```typescript
+// Clear names
 'user-api-builder'
 'python-ml-v2'
 'discord-bot-prod'
 
-// ❌ Vague names
-'inst1'
-'tmpl'
-'test'
+// Avoid vague names
+// 'inst1', 'tmpl', 'test'
 ```
 
 ## Performance
 
-```javascript
-// ✅ Parallel (fast)
+```typescript
+// Parallel creation (fast)
 const [inst1, inst2, inst3] = await Promise.all([
-  client.instances.create({ name: 'agent-1', description: 'Agent 1' }),
-  client.instances.create({ name: 'agent-2', description: 'Agent 2' }),
-  client.instances.create({ name: 'agent-3', description: 'Agent 3' })
+  Instance.create({ name: 'agent-1', description: 'Agent 1' }),
+  Instance.create({ name: 'agent-2', description: 'Agent 2' }),
+  Instance.create({ name: 'agent-3', description: 'Agent 3' })
 ]);
+```
+
+## Logger
+
+```typescript
+import { In10ntClient, createConsoleLogger } from '@in10nt/sdk';
+
+// Opt-in to debug logging
+const client = new In10ntClient({ logger: createConsoleLogger() });
+
+// Or pass any logger with { debug, info, warn, error }
+const client = new In10ntClient({ logger: myLogger });
 ```
 
 ## Security
@@ -138,4 +150,3 @@ const [inst1, inst2, inst3] = await Promise.all([
 - Use env vars for secrets
 - Rotate keys regularly
 - Separate dev/prod keys
-

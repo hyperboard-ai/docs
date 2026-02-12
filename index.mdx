@@ -30,32 +30,52 @@ description: "Build and deploy AI agents with custom environments"
 
 ## Quick Example
 
-```javascript
+### Zero-config path
+
+```typescript
+import { Instance } from '@in10nt/sdk';
+
+// No client needed — uses IN10NT_API_KEY env var
+const instance = await Instance.create({
+  name: 'my-agent',
+  description: 'Build an API'
+});
+
+const result = await instance.run('Build a REST API for user management');
+console.log(result.response);
+console.log('Preview:', instance.getProxyUrl(5173));
+
+await instance.destroy();
+```
+
+### Client path (multiple resources)
+
+```typescript
 import { In10ntClient } from '@in10nt/sdk';
 
 const client = new In10ntClient({
   apiKey: process.env.IN10NT_API_KEY
 });
 
-// Create instance and run task
 const instance = await client.instances.create({
-  name: 'my-agent'
+  name: 'my-agent',
+  description: 'Build an API'
 });
 
-const result = await instance.run(
-  'Build a REST API for user management'
-);
-
+const result = await instance.run('Build a REST API for user management');
 console.log(result.response);
 ```
 
 ## Key Features
 
-- **`Simple API`**: Intuitive manager pattern with `templates`, `instances`, and `usage`
+- **`Static Factory Methods`**: `Instance.create()`, `Instance.connect()`, `Instance.list()` — no client needed
+- **`Full TypeScript`**: Ships `.d.ts` + source maps, ESM-only
+- **`Namespaced Sub-modules`**: `instance.tasks.*`, `instance.ports.*`, `instance.files.*`, `instance.tools.*`, `instance.integrations.*`
 - **`Custom Environments`**: Use any Docker image as your base
 - **`Auto Health Checks`**: Automatic instance readiness detection
-- **`Conversation History`**: Maintained automatically across multiple prompts
-- **`TypeScript Support`**: Full type definitions included
+- **`Configurable Everything`**: Model, timeout, poll interval, health checks all settable per-call
+- **`Typed Errors`**: Catch `TimeoutError`, `HealthCheckError`, `TaskPollError`, etc.
+- **`Logger Injection`**: Zero `console.log` in library code — opt in with `createConsoleLogger()`
 
 ## Get Started
 
@@ -94,9 +114,17 @@ console.log(result.response);
 
 ```
 In10ntClient
-├── templates: ContainerTemplateManager
 ├── instances: InstanceManager
+├── templates: ContainerTemplateManager
+├── savedTemplates: SavedTemplateManager
 └── usage: UsageManager
+
+Instance
+├── tasks: TasksNamespace
+├── ports: PortsNamespace
+├── files: FilesNamespace
+├── tools: ToolsNamespace
+└── integrations: IntegrationsNamespace
 ```
 
-The SDK uses `axios` for HTTP requests and provides a fluent API with method chaining and async/await support.
+The SDK uses `axios` for HTTP requests and provides both a zero-config static API (`Instance.create()`) and a full client (`In10ntClient`) for managing multiple resources.

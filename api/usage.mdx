@@ -5,7 +5,8 @@ description: "Track token usage and costs"
 
 ## Get Usage
 
-```javascript
+```typescript
+const client = new In10ntClient();
 const usage = await client.usage.getTokenUsage();
 
 console.log(`Monthly: ${usage.monthlyTokens} tokens, $${usage.monthlyCost}`);
@@ -14,7 +15,7 @@ console.log(`Total: ${usage.totalTokens} tokens, $${usage.totalCost}`);
 
 ### Response
 
-```javascript
+```typescript
 {
   monthlyTokens: 1250000,
   monthlyCost: 15.75,
@@ -26,18 +27,17 @@ console.log(`Total: ${usage.totalTokens} tokens, $${usage.totalCost}`);
 
 ## Per-Task Usage
 
-```javascript
+```typescript
 const result = await instance.run('Build a REST API');
 
 console.log(`Tokens: ${result.tokensUsed}`);
-console.log(`Cost: $${result.usage.cost}`);
 console.log(`Duration: ${result.duration_ms}ms`);
 ```
 
 ## Monitor Usage
 
-```javascript
-const instance = await client.instances.create({
+```typescript
+const instance = await Instance.create({
   name: 'tracker',
   description: 'Task tracker'
 });
@@ -53,6 +53,7 @@ sessionTokens += r2.tokensUsed;
 console.log(`Session: ${sessionTokens} tokens`);
 
 // Check monthly
+const client = new In10ntClient();
 const usage = await client.usage.getTokenUsage();
 console.log(`Monthly: ${usage.monthlyTokens} tokens`);
 ```
@@ -65,4 +66,3 @@ console.log(`Monthly: ${usage.monthlyTokens} tokens`);
 curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://in10t-api-v2.fly.dev/usage/tokens
 ```
-

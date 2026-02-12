@@ -8,18 +8,21 @@ description: "Test your SDK integration"
 Install testing dependencies:
 
 ```bash
-npm install --save-dev jest @types/jest
+npm install --save-dev jest @types/jest ts-jest
 ```
 
 Configure Jest:
 
 ```javascript
 // jest.config.js
-module.exports = {
-  preset: 'ts-jest',
+export default {
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  testTimeout: 60000, // 1 minute for integration tests
-  setupFiles: ['dotenv/config']
+  testTimeout: 60000,
+  extensionsToTreatAsEsm: ['.ts'],
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1'
+  }
 };
 ```
 
@@ -27,35 +30,29 @@ module.exports = {
 
 Test SDK initialization and configuration:
 
-```javascript
-import { In10ntClient } from '@in10nt/sdk';
+```typescript
+import { In10ntClient, Instance, In10ntError } from '@in10nt/sdk';
 
 describe('In10nt SDK', () => {
-  let client;
-  
-  beforeEach(() => {
-    client = new In10ntClient({
-      apiKey: process.env.TEST_API_KEY
-    });
-  });
-
   test('should initialize client', () => {
+    const client = new In10ntClient({
+      apiKey: 'test-key'
+    });
+
     expect(client).toBeDefined();
     expect(client.instances).toBeDefined();
     expect(client.templates).toBeDefined();
+    expect(client.savedTemplates).toBeDefined();
     expect(client.usage).toBeDefined();
   });
 
-  test('should have correct base URL', () => {
-    expect(client.baseURL).toBe('https://in10t-api-v2.fly.dev');
-  });
+  test('should throw without API key', () => {
+    const original = process.env.IN10NT_API_KEY;
+    delete process.env.IN10NT_API_KEY;
 
-  test('should support custom base URL', () => {
-    const customClient = new In10ntClient({
-      apiKey: 'test',
-      baseURL: 'https://custom.example.com'
-    });
-    expect(customClient.baseURL).toBe('https://custom.example.com');
+    expect(() => new In10ntClient()).toThrow(In10ntError);
+
+    process.env.IN10NT_API_KEY = original;
   });
 });
 ```
@@ -64,90 +61,105 @@ describe('In10nt SDK', () => {
 
 Test actual API interactions:
 
-```javascript
-import { In10ntClient } from '@in10nt/sdk';
+```typescript
+import { Instance, In10ntClient } from '@in10nt/sdk';
 
 describe('Instance Management', () => {
-  let client;
-  let instance;
-  
-  beforeAll(() => {
-    client = new In10ntClient({
-      apiKey: process.env.TEST_API_KEY
-    });
-  });
+  let instance: Instance | null = null;
 
   afterEach(async () => {
     if (instance) {
       try {
         await instance.destroy();
-      } catch (error) {
-        console.error('Cleanup failed:', error);
+      } catch {
+        // already destroyed
       }
       instance = null;
     }
   });
 
-  test('should create instance', async () => {
-    instance = await client.instances.create({
-      name: 'test-agent'
+  test('should create instance (static)', async () => {
+    instance = await Instance.create({
+      name: 'test-static',
+      description: 'Static factory test'
     });
-    
+
     expect(instance.instanceId).toBeDefined();
-    expect(instance.status).toBe('running');
-    expect(instance.agentUrl).toBeDefined();
+    expect(instance.status).toBeDefined();
+    expect(instance.name).toBe('test-static');
+  });
+
+  test('should create instance (client)', async () => {
+    const client = new In10ntClient();
+    instance = await client.instances.create({
+      name: 'test-client',
+      description: 'Client path test'
+    });
+
+    expect(instance.instanceId).toBeDefined();
+  });
+
+  test('should connect to instance', async () => {
+    instance = await Instance.create({
+      name: 'test-connect',
+      description: 'Connect test'
+    });
+
+    const same = await Instance.connect(instance.instanceId);
+    expect(same.instanceId).toBe(instance.instanceId);
   });
 
   test('should list instances', async () => {
-    instance = await client.instances.create({
-      name: 'test-list-agent'
-    });
-
-    const instances = await client.instances.list();
-    
+    const instances = await Instance.list();
     expect(Array.isArray(instances)).toBe(true);
-    expect(instances.length).toBeGreaterThan(0);
-  });
-
-  test('should get instance by ID', async () => {
-    instance = await client.instances.create({
-      name: 'test-get-agent'
-    });
-
-    const retrieved = await client.instances.get(instance.instanceId);
-    
-    expect(retrieved.instanceId).toBe(instance.instanceId);
-    expect(retrieved.name).toBe('test-get-agent');
   });
 
   test('should run task', async () => {
-    instance = await client.instances.create({
-      name: 'test-run-agent'
+    instance = await Instance.create({
+      name: 'test-run',
+      description: 'Run test'
     });
-    
+
     const result = await instance.run('Echo "Hello World"', {
-      waitForHealth: false,
-      timeout: 30000
+      timeout: 60_000
     });
-    
+
     expect(result.response).toBeDefined();
     expect(result.tokensUsed).toBeGreaterThan(0);
-    expect(result.duration_ms).toBeGreaterThan(0);
+  });
+
+  test('should use namespaced methods', async () => {
+    instance = await Instance.create({
+      name: 'test-namespaces',
+      description: 'Namespace test'
+    });
+
+    // Tasks namespace
+    const tasks = await instance.tasks.list();
+    expect(Array.isArray(tasks)).toBe(true);
+
+    // Ports namespace
+    const ports = await instance.ports.list();
+    expect(Array.isArray(ports)).toBe(true);
+
+    // Files namespace
+    const changes = await instance.files.getChanges();
+    expect(changes).toBeDefined();
+
+    // Proxy URL (sync)
+    const url = instance.getProxyUrl(3000);
+    expect(url).toContain(instance.instanceId);
+    expect(url).toContain('3000');
   });
 
   test('should destroy instance', async () => {
-    instance = await client.instances.create({
-      name: 'test-destroy-agent'
+    instance = await Instance.create({
+      name: 'test-destroy',
+      description: 'Destroy test'
     });
 
     await instance.destroy();
-    
-    // Try to get destroyed instance (should fail)
-    await expect(
-      client.instances.get(instance.instanceId)
-    ).rejects.toThrow();
-    
-    instance = null; // Prevent double cleanup
+    instance = null;
   });
 });
 ```
@@ -156,23 +168,19 @@ describe('Instance Management', () => {
 
 Test container template creation:
 
-```javascript
+```typescript
+import { In10ntClient } from '@in10nt/sdk';
+
 describe('Container Templates', () => {
-  let client;
-  let template;
-  
-  beforeAll(() => {
-    client = new In10ntClient({
-      apiKey: process.env.TEST_API_KEY
-    });
-  });
+  const client = new In10ntClient();
+  let template: Awaited<ReturnType<typeof client.templates.create>> | null = null;
 
   afterEach(async () => {
     if (template) {
       try {
         await template.delete();
-      } catch (error) {
-        console.error('Cleanup failed:', error);
+      } catch {
+        // already deleted
       }
       template = null;
     }
@@ -184,10 +192,9 @@ describe('Container Templates', () => {
       image: 'python:3.11-slim',
       registryType: 'dockerhub'
     });
-    
+
     expect(template.templateId).toBeDefined();
     expect(template.name).toBe('test-template');
-    expect(template.status).toBe('building');
   });
 
   test('should wait until ready', async () => {
@@ -196,12 +203,10 @@ describe('Container Templates', () => {
       image: 'python:3.11-slim',
       registryType: 'dockerhub'
     });
-    
-    await template.waitUntilReady({ timeout: 300000 });
-    
+
+    await template.waitUntilReady({ timeout: 300_000 });
     expect(template.status).toBe('ready');
-    expect(template.platformImage).toBeDefined();
-  }, 310000); // 5+ minute timeout
+  }, 310_000);
 
   test('should use template with instance', async () => {
     template = await client.templates.create({
@@ -209,18 +214,18 @@ describe('Container Templates', () => {
       image: 'python:3.11-slim',
       registryType: 'dockerhub'
     });
-    
+
     await template.waitUntilReady();
-    
+
     const instance = await client.instances.create({
-      templateId: template.templateId
+      name: 'test-with-template',
+      description: 'Template test',
+      containerTemplateId: template.templateId
     });
-    
+
     expect(instance.instanceId).toBeDefined();
-    expect(instance.templateId).toBe(template.templateId);
-    
     await instance.destroy();
-  }, 310000);
+  }, 310_000);
 });
 ```
 
@@ -228,44 +233,34 @@ describe('Container Templates', () => {
 
 Test error scenarios:
 
-```javascript
-describe('Error Handling', () => {
-  let client;
-  
-  beforeAll(() => {
-    client = new In10ntClient({
-      apiKey: process.env.TEST_API_KEY
-    });
-  });
+```typescript
+import { Instance, In10ntClient, In10ntError, TimeoutError } from '@in10nt/sdk';
 
+describe('Error Handling', () => {
   test('should handle invalid instance ID', async () => {
     await expect(
-      client.instances.get('invalid-id')
+      Instance.connect('invalid-id')
+    ).rejects.toThrow(In10ntError);
+  });
+
+  test('should handle missing required fields', async () => {
+    await expect(
+      Instance.create({ name: '', description: '' } as any)
     ).rejects.toThrow();
   });
 
-  test('should handle duplicate instance name', async () => {
-    const instance1 = await client.instances.create({
-      name: 'duplicate-test'
-    });
-
-    try {
-      await expect(
-        client.instances.create({ name: 'duplicate-test' })
-      ).rejects.toThrow();
-    } finally {
-      await instance1.destroy();
-    }
-  });
-
   test('should handle timeout', async () => {
-    const instance = await client.instances.create({
-      name: 'timeout-test'
+    const instance = await Instance.create({
+      name: 'timeout-test',
+      description: 'Timeout test'
     });
 
     try {
       await expect(
-        instance.run('Long task', { timeout: 1000 })
+        instance.run('Long task', {
+          timeout: 1000,
+          waitForHealth: false
+        })
       ).rejects.toThrow();
     } finally {
       await instance.destroy();
@@ -278,19 +273,15 @@ describe('Error Handling', () => {
 
 Test usage tracking:
 
-```javascript
+```typescript
+import { In10ntClient, Instance } from '@in10nt/sdk';
+
 describe('Usage Tracking', () => {
-  let client;
-  
-  beforeAll(() => {
-    client = new In10ntClient({
-      apiKey: process.env.TEST_API_KEY
-    });
-  });
+  const client = new In10ntClient();
 
   test('should get token usage', async () => {
     const usage = await client.usage.getTokenUsage();
-    
+
     expect(usage.monthlyTokens).toBeGreaterThanOrEqual(0);
     expect(usage.totalTokens).toBeGreaterThanOrEqual(0);
     expect(usage.monthlyCost).toBeGreaterThanOrEqual(0);
@@ -298,17 +289,14 @@ describe('Usage Tracking', () => {
   });
 
   test('should track task usage', async () => {
-    const instance = await client.instances.create({
-      name: 'usage-test'
+    const instance = await Instance.create({
+      name: 'usage-test',
+      description: 'Usage test'
     });
 
     try {
-      const result = await instance.run('Simple task', {
-        waitForHealth: false
-      });
-      
+      const result = await instance.run('Simple task');
       expect(result.tokensUsed).toBeGreaterThan(0);
-      expect(result.usage.cost).toBeGreaterThan(0);
     } finally {
       await instance.destroy();
     }
@@ -316,101 +304,33 @@ describe('Usage Tracking', () => {
 });
 ```
 
-## Mock Testing
+## Background Mode Tests
 
-Test with mocks for faster unit tests:
+```typescript
+import { Instance } from '@in10nt/sdk';
 
-```javascript
-import { jest } from '@jest/globals';
-
-describe('Mocked SDK Tests', () => {
-  let client;
-  let mockAxios;
-  
-  beforeEach(() => {
-    mockAxios = {
-      create: jest.fn(() => ({
-        request: jest.fn(),
-        get: jest.fn(),
-        post: jest.fn(),
-        delete: jest.fn()
-      }))
-    };
-
-    client = new In10ntClient({
-      apiKey: 'test-key'
-    });
-  });
-
-  test('should create instance with correct params', async () => {
-    const mockPost = jest.fn().mockResolvedValue({
-      data: {
-        instanceId: 'inst_123',
-        name: 'test',
-        status: 'running',
-        agentUrl: 'http://test.url',
-        createdAt: new Date().toISOString()
-      }
-    });
-
-    client.client.post = mockPost;
-
-    const instance = await client.instances.create({
-      name: 'test',
-      env: { KEY: 'value' }
-    });
-
-    expect(mockPost).toHaveBeenCalledWith(
-      '/instances',
-      { name: 'test', env: { KEY: 'value' } }
-    );
-    expect(instance.instanceId).toBe('inst_123');
-  });
-});
-```
-
-## End-to-End Tests
-
-Complete workflow tests:
-
-```javascript
-describe('E2E Workflows', () => {
-  let client;
-  
-  beforeAll(() => {
-    client = new In10ntClient({
-      apiKey: process.env.TEST_API_KEY
-    });
-  });
-
-  test('should complete full workflow', async () => {
-    // Create instance
-    const instance = await client.instances.create({
-      name: 'e2e-test'
+describe('Background Mode', () => {
+  test('should return taskId in background mode', async () => {
+    const instance = await Instance.create({
+      name: 'bg-test',
+      description: 'Background test'
     });
 
     try {
-      // Run multiple tasks
-      await instance.run('Create a simple function', {
-        waitForHealth: false
-      });
-      
-      await instance.run('Add error handling', {
-        waitForHealth: false
+      const result = await instance.run('Build something', {
+        background: true
       });
 
-      // Check changes
-      const changes = await instance.getChanges();
-      expect(changes.changes).toBeDefined();
+      expect(result.taskId).toBeDefined();
+      expect(result.status).toBe('processing');
 
-      // Check health
-      const health = await instance.health();
-      expect(health.status).toBe('healthy');
-
+      // Poll for completion
+      const final = await instance.tasks.poll(result.taskId!);
+      expect(final.response).toBeDefined();
     } finally {
       await instance.destroy();
     }
-  }, 120000);
+  });
 });
 ```
 
@@ -418,46 +338,43 @@ describe('E2E Workflows', () => {
 
 Create reusable test utilities:
 
-```javascript
-// test-utils.js
+```typescript
+// test-utils.ts
+import { Instance, In10ntClient } from '@in10nt/sdk';
+import type { ContainerTemplate } from '@in10nt/sdk';
+
 export class TestHelper {
-  constructor(client) {
-    this.client = client;
-    this.instances = [];
-    this.templates = [];
+  private client: In10ntClient;
+  private instances: Instance[] = [];
+  private templates: ContainerTemplate[] = [];
+
+  constructor() {
+    this.client = new In10ntClient();
   }
 
-  async createInstance(config) {
-    const instance = await this.client.instances.create(config);
+  async createInstance(name: string, description: string): Promise<Instance> {
+    const instance = await this.client.instances.create({ name, description });
     this.instances.push(instance);
     return instance;
   }
 
-  async createTemplate(config) {
-    const template = await this.client.templates.create(config);
+  async createTemplate(name: string, image: string): Promise<ContainerTemplate> {
+    const template = await this.client.templates.create({
+      name,
+      image,
+      registryType: 'dockerhub'
+    });
     this.templates.push(template);
     return template;
   }
 
-  async cleanup() {
-    // Clean up instances
+  async cleanup(): Promise<void> {
     for (const instance of this.instances) {
-      try {
-        await instance.destroy();
-      } catch (error) {
-        console.error('Failed to destroy instance:', error);
-      }
+      try { await instance.destroy(); } catch {}
     }
-
-    // Clean up templates
     for (const template of this.templates) {
-      try {
-        await template.delete();
-      } catch (error) {
-        console.error('Failed to delete template:', error);
-      }
+      try { await template.delete(); } catch {}
     }
-
     this.instances = [];
     this.templates = [];
   }
@@ -465,22 +382,14 @@ export class TestHelper {
 
 // Usage in tests
 describe('With Test Helper', () => {
-  let client;
-  let helper;
-  
-  beforeEach(() => {
-    client = new In10ntClient({
-      apiKey: process.env.TEST_API_KEY
-    });
-    helper = new TestHelper(client);
-  });
+  const helper = new TestHelper();
 
   afterEach(async () => {
     await helper.cleanup();
   });
 
   test('should create and cleanup automatically', async () => {
-    const instance = await helper.createInstance({ name: 'test' });
+    const instance = await helper.createInstance('test', 'Test instance');
     expect(instance.instanceId).toBeDefined();
     // Cleanup happens automatically in afterEach
   });
@@ -494,7 +403,7 @@ describe('With Test Helper', () => {
 npm test
 
 # Run specific test file
-npm test -- instances.test.js
+npm test -- instances.test.ts
 
 # Run with coverage
 npm test -- --coverage
@@ -514,21 +423,20 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - uses: actions/checkout@v2
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
+
       - name: Install dependencies
         run: npm install
-      
+
       - name: Run tests
         env:
-          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+          IN10NT_API_KEY: ${{ secrets.TEST_API_KEY }}
         run: npm test
 ```
-

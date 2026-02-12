@@ -8,13 +8,15 @@ description: "Create custom Docker environments"
 Build custom agent environments from any Docker image.
 
 <Note>
-  **Container templates** = Custom Docker environments  
-  **Instance cloning** (`instance.save()`) = Copy workspace files
+  **Container templates** = Custom Docker environments
+  **Saved templates** (`instance.snapshot()`) = Workspace snapshots
 </Note>
 
 ## Create a Template
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 const template = await client.templates.create({
   name: 'python-ml',
   image: 'python:3.11-slim',
@@ -41,7 +43,7 @@ await template.waitUntilReady();  // Wait for build
 ### Registry Types
 
 - `dockerhub` - Public Docker Hub
-- `private` - Private registries  
+- `private` - Private registries
 - `gcr` - Google Container Registry
 
 ### Build Status
@@ -50,7 +52,7 @@ await template.waitUntilReady();  // Wait for build
 
 ## Wait for Build
 
-```javascript
+```typescript
 await template.waitUntilReady({
   timeout: 300000,     // 5 min (default)
   pollInterval: 5000   // Check every 5s
@@ -59,7 +61,7 @@ await template.waitUntilReady({
 
 ## List & Get Templates
 
-```javascript
+```typescript
 // List all
 const templates = await client.templates.list();
 
@@ -73,7 +75,7 @@ await template.delete();
 
 ## Use Template
 
-```javascript
+```typescript
 // Build template
 const template = await client.templates.create({
   name: 'ml-env',
@@ -87,7 +89,7 @@ await template.waitUntilReady();
 const instance = await client.instances.create({
   name: 'ml-agent',
   description: 'ML tasks',
-  templateId: template.templateId
+  containerTemplateId: template.templateId
 });
 
 await instance.run('Train classifier');
@@ -95,7 +97,7 @@ await instance.run('Train classifier');
 
 ## Private Registry
 
-```javascript
+```typescript
 const template = await client.templates.create({
   name: 'private-env',
   image: 'registry.example.com/myimage:latest',
@@ -113,7 +115,7 @@ const template = await client.templates.create({
 
 ## Quick Examples
 
-```javascript
+```typescript
 // Python
 await client.templates.create({
   name: 'python',
@@ -136,14 +138,33 @@ await client.templates.create({
 });
 ```
 
-## Template vs Instance Clone
+## Saved Templates (Snapshots)
 
-| Feature | Container Template | Instance Clone |
+Saved templates are workspace snapshots created with `instance.snapshot()`. They are managed via `client.savedTemplates`:
+
+```typescript
+// List saved templates
+const saved = await client.savedTemplates.list();
+
+// Delete a saved template
+await client.savedTemplates.delete('old-template');
+
+// Clone from a saved template
+const clone = await client.instances.createFromSavedTemplate({
+  templateName: 'web-app-template',
+  newInstanceName: 'my-web-app-v2'
+});
+```
+
+## Template vs Saved Template
+
+| Feature | Container Template | Saved Template |
 |---------|-------------------|----------------|
-| Method | `templates.create()` | `instance.save()` |
+| Method | `client.templates.create()` | `instance.snapshot()` |
 | Creates | Custom Docker environment | Workspace snapshot |
 | Build time | 2-5 minutes | Instant |
 | Use case | Base environments | Reuse workspaces |
+| Clone with | `containerTemplateId` in create | `createFromSavedTemplate()` |
 
 ## HTTP API Reference
 
@@ -181,3 +202,9 @@ curl -X DELETE https://in10t-api-v2.fly.dev/container-templates/{templateId} \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
+### List Saved Templates
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://in10t-api-v2.fly.dev/saved-templates
+```

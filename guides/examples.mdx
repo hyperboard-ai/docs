@@ -5,25 +5,26 @@ description: "Real-world usage examples"
 
 ## Quick Start
 
-```javascript
-import { In10ntClient } from '@in10nt/sdk';
+```typescript
+import { Instance } from '@in10nt/sdk';
 
-const client = new In10ntClient({ 
-  apiKey: process.env.IN10NT_API_KEY 
-});
-
-const instance = await client.instances.create({
+const instance = await Instance.create({
   name: 'quick-agent',
   description: 'Web scraper'
 });
 
 const result = await instance.run('Build a web scraper for product prices');
 console.log(result.response);
+await instance.destroy();
 ```
 
 ## Custom Environment
 
-```javascript
+```typescript
+import { In10ntClient } from '@in10nt/sdk';
+
+const client = new In10ntClient();
+
 // Build custom template
 const template = await client.templates.create({
   name: 'python-ml',
@@ -37,7 +38,7 @@ await template.waitUntilReady();
 const instance = await client.instances.create({
   name: 'ml-agent',
   description: 'ML tasks',
-  templateId: template.templateId
+  containerTemplateId: template.templateId
 });
 
 await instance.run('Train sentiment classifier on reviews.csv');
@@ -45,8 +46,8 @@ await instance.run('Train sentiment classifier on reviews.csv');
 
 ## Multi-Step Conversation
 
-```javascript
-const instance = await client.instances.create({
+```typescript
+const instance = await Instance.create({
   name: 'web-builder',
   description: 'REST API project'
 });
@@ -55,12 +56,15 @@ await instance.run('Create REST API with user CRUD');
 await instance.run('Add JWT authentication');
 await instance.run('Write tests');
 
-const changes = await instance.getChanges();
+const changes = await instance.files.getChanges();
+await instance.destroy();
 ```
 
 ## Discord Bot (Moltbot)
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 const bot = await client.instances.create({
   name: 'discord-bot',
   description: 'My Discord bot',
@@ -81,7 +85,9 @@ await bot.run('Improve the welcome message for new members');
 
 ## Voice Agent (Twilio)
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 const voice = await client.instances.create({
   name: 'phone-assistant',
   description: 'Voice AI assistant',
@@ -100,7 +106,9 @@ await voice.run('Update the greeting message to be more friendly');
 
 ## GitHub Automation
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 const agent = await client.instances.create({
   name: 'gh-automation',
   description: 'GitHub automation',
@@ -115,40 +123,48 @@ await agent.run('Clone my repo, add CI/CD workflow, and create PR');
 
 ## Web App with Dev Server
 
-```javascript
-const instance = await client.instances.create({
+```typescript
+const instance = await Instance.create({
   name: 'web-app',
   description: 'React app'
 });
 
 await instance.run('Create React + Vite app and start dev server on port 5173');
 
-// Access at: https://in10t-api-v2.fly.dev/instances/{instanceId}/ports/5173/
-const ports = await client.client.get(`/instances/${instance.instanceId}/ports`);
-console.log('Dev server:', ports.ports);
+// Access at the proxy URL
+const url = instance.getProxyUrl(5173);
+console.log('Dev server:', url);
+
+// Or list detected ports
+const ports = await instance.ports.list();
+console.log('Ports:', ports);
 ```
 
-## Async Long-Running Task
+## Background Task
 
-```javascript
-const instance = await client.instances.create({
+```typescript
+const instance = await Instance.create({
   name: 'data-processor',
   description: 'Data processing'
 });
 
-// Start task
-const response = await instance.run('Process large dataset');
+// Start task in background (returns immediately)
+const { taskId } = await instance.run('Process large dataset', {
+  background: true
+});
 
-if (response.taskId) {
-  // Poll for completion
-  const result = await instance.pollTask(response.taskId);
-  console.log(result.response);
-}
+// ... do other work ...
+
+// Poll for completion later
+const result = await instance.tasks.poll(taskId!);
+console.log(result.response);
 ```
 
 ## Clone Workspace
 
-```javascript
+```typescript
+const client = new In10ntClient();
+
 // Setup base workspace
 const base = await client.instances.create({
   name: 'base',
@@ -156,13 +172,76 @@ const base = await client.instances.create({
 });
 await base.run('Setup project with dependencies');
 
-// Save as template
-await base.save('base-template');
+// Snapshot the workspace
+await base.snapshot();
 
-// Clone multiple times
-const clone = await client.instances.createFromTemplate({
-  templateName: 'base-template',
+// Clone from saved template
+const clone = await client.instances.createFromSavedTemplate({
+  templateName: 'base',
   newInstanceName: 'clone-1'
 });
+
+await clone.run('Continue building on the base project');
 ```
 
+## Configurable Run Options
+
+```typescript
+const instance = await Instance.create({
+  name: 'configurable',
+  description: 'Custom options demo'
+});
+
+const result = await instance.run('Build a REST API', {
+  model: 'anthropic/claude-sonnet-4.5',
+  timeout: 300_000,
+  pollInterval: 5_000,
+  maxPollTime: 120_000,
+  healthCheckRetries: 20,
+  healthCheckDelay: 3_000,
+  maxTokens: 4096,
+  system: 'You are a senior engineer. Write production-ready code.',
+});
+
+console.log(result.response);
+```
+
+## Error Handling
+
+```typescript
+import { Instance, TimeoutError, HealthCheckError, In10ntError } from '@in10nt/sdk';
+
+try {
+  const instance = await Instance.create({
+    name: 'safe-agent',
+    description: 'Error handling demo'
+  });
+
+  const result = await instance.run('Build something', {
+    timeout: 60_000
+  });
+
+  console.log(result.response);
+  await instance.destroy();
+} catch (err) {
+  if (err instanceof TimeoutError) {
+    console.error('Timed out:', err.message);
+  } else if (err instanceof HealthCheckError) {
+    console.error('Not healthy:', err.message);
+  } else if (err instanceof In10ntError) {
+    console.error('API error:', err.statusCode, err.message);
+  }
+}
+```
+
+## Logger
+
+```typescript
+import { Instance, createConsoleLogger } from '@in10nt/sdk';
+
+// Opt-in to see SDK debug output
+const instance = await Instance.create(
+  { name: 'debug-agent', description: 'Debug demo' },
+  { logger: createConsoleLogger() }
+);
+```

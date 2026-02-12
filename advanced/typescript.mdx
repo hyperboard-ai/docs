@@ -5,10 +5,23 @@ description: "TypeScript definitions and usage"
 
 ## Installation
 
-The SDK includes TypeScript definitions out of the box:
+The SDK is written in TypeScript and ships `.d.ts` + source maps out of the box:
 
 ```bash
 npm install @in10nt/sdk
+```
+
+All types are exported from the main entry point:
+
+```typescript
+import {
+  Instance,
+  In10ntClient,
+  type CreateInstanceConfig,
+  type RunOptions,
+  type RunResult,
+  type TokenUsage,
+} from '@in10nt/sdk';
 ```
 
 ## Type Definitions
@@ -16,33 +29,38 @@ npm install @in10nt/sdk
 ### Client Configuration
 
 ```typescript
-interface In10ntClientConfig {
-  apiKey: string;
+interface ClientConfig {
+  apiKey?: string;
   baseURL?: string;
+  logger?: Logger;
+}
+
+interface Logger {
+  debug(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
 }
 ```
 
 ### Container Templates
 
 ```typescript
-interface ContainerTemplateConfig {
+interface CreateContainerTemplateConfig {
   name: string;
   image: string;
   registryType: 'dockerhub' | 'private' | 'gcr';
   description?: string;
-  registryAuth?: {
-    username: string;
-    password: string;
-  };
+  registryAuth?: Record<string, unknown>;
 }
 
 interface ContainerTemplateData {
   templateId: string;
   name: string;
-  image: string;
-  status: 'building' | 'ready' | 'failed';
-  platformImage?: string;
-  createdAt: string;
+  status: string;
+  image?: string;
+  registryType?: string;
+  description?: string;
   error?: string;
 }
 ```
@@ -50,10 +68,10 @@ interface ContainerTemplateData {
 ### Instances
 
 ```typescript
-interface InstanceConfig {
-  name?: string;
-  description?: string;
-  templateId?: string;
+interface CreateInstanceConfig {
+  name: string;
+  description: string;
+  containerTemplateId?: string;
   vmImage?: string;
   vmSize?: string;
   region?: string;
@@ -62,14 +80,13 @@ interface InstanceConfig {
 
 interface InstanceData {
   instanceId: string;
-  name?: string;
-  description?: string;
-  status: 'running' | 'stopped' | 'error';
-  agentUrl: string;
+  name: string;
+  description: string;
+  status: string;
+  region: string;
+  vmSize: string;
   createdAt: string;
-  templateId?: string;
-  region?: string;
-  vmSize?: string;
+  agentUrl: string;
   env?: Record<string, string>;
 }
 ```
@@ -81,22 +98,33 @@ interface RunOptions {
   model?: string;
   provider?: string;
   system?: string;
-  tools?: any[];
-  autoTools?: boolean;
+  tools?: unknown[];
+  maxTokens?: number;
   timeout?: number;
-  waitForHealth?: boolean;
+  pollInterval?: number;
+  maxPollTime?: number;
   healthCheckRetries?: number;
   healthCheckDelay?: number;
+  waitForHealth?: boolean;
+  background?: boolean;
+  autoTools?: boolean;
 }
 
 interface RunResult {
   response: string;
-  usage: {
-    total_tokens: number;
-    cost: number;
-  };
+  usage?: Record<string, unknown>;
   tokensUsed: number;
-  duration_ms: number;
+  duration_ms?: number;
+  messageId?: string;
+  toolsUsed?: unknown[];
+  completedAt?: string;
+  taskId?: string;
+  status?: string;
+}
+
+interface PollOptions {
+  pollInterval?: number;
+  maxPollTime?: number;
 }
 ```
 
@@ -108,34 +136,77 @@ interface TokenUsage {
   totalTokens: number;
   monthlyCost: number;
   totalCost: number;
-  lastUsage: string | null;
+  lastUsage: string;
 }
 ```
 
+### Errors
+
+```typescript
+class In10ntError extends Error {
+  statusCode?: number;
+  response?: unknown;
+}
+
+class TimeoutError extends In10ntError {}
+class HealthCheckError extends In10ntError {}
+class TaskPollError extends In10ntError {}
+class TemplateNotFoundError extends In10ntError {}
+```
+
 ## Class Definitions
+
+### Instance
+
+```typescript
+class Instance {
+  // Properties
+  readonly instanceId: string;
+  name: string;
+  description: string;
+  status: string;
+  region: string;
+  vmSize: string;
+  createdAt: string;
+  agentUrl: string;
+  env?: Record<string, string>;
+
+  // Namespaces
+  readonly tasks: TasksNamespace;
+  readonly ports: PortsNamespace;
+  readonly files: FilesNamespace;
+  readonly tools: ToolsNamespace;
+  readonly integrations: IntegrationsNamespace;
+
+  // Static factory methods
+  static create(config: CreateInstanceConfig, clientConfig?: ClientConfig): Promise<Instance>;
+  static connect(instanceId: string, clientConfig?: ClientConfig): Promise<Instance>;
+  static list(clientConfig?: ClientConfig): Promise<Instance[]>;
+
+  // Instance methods
+  run(prompt: string, options?: RunOptions): Promise<RunResult>;
+  execute(command: string): Promise<unknown>;
+  stop(): Promise<unknown>;
+  restart(): Promise<unknown>;
+  destroy(): Promise<void>;
+  health(): Promise<HealthResult>;
+  snapshot(): Promise<SnapshotResult>;
+  getProxyUrl(port: number): string;
+  refresh(): Promise<this>;
+  streamLogs(onLog: (event: unknown) => void): Promise<() => void>;
+}
+```
 
 ### In10ntClient
 
 ```typescript
 class In10ntClient {
-  templates: ContainerTemplateManager;
-  instances: InstanceManager;
-  usage: UsageManager;
+  readonly instances: InstanceManager;
+  readonly templates: ContainerTemplateManager;
+  readonly savedTemplates: SavedTemplateManager;
+  readonly usage: UsageManager;
 
-  constructor(config: In10ntClientConfig);
-  
-  // Request methods
-  getHeaders(): Record<string, string>;
-  request(method: string, path: string, data?: any): Promise<any>;
-  get(path: string): Promise<any>;
-  post(path: string, data?: any): Promise<any>;
-  delete(path: string): Promise<any>;
-  
-  // Legacy methods
-  createInstance(config: InstanceConfig): Promise<Instance>;
-  listInstances(): Promise<Instance[]>;
-  getInstance(instanceId: string): Promise<Instance>;
-  getStats(): Promise<any>;
+  constructor(config?: ClientConfig);
 }
 ```
 
@@ -143,71 +214,64 @@ class In10ntClient {
 
 ```typescript
 class ContainerTemplate {
-  templateId: string;
-  name: string;
-  image: string;
-  status: 'building' | 'ready' | 'failed';
-  platformImage?: string;
-  createdAt: string;
-  error?: string;
-  
-  waitUntilReady(options?: {
-    timeout?: number;
-    pollInterval?: number;
-  }): Promise<ContainerTemplate>;
-  
+  readonly templateId: string;
+  readonly name: string;
+  status: string;
+  readonly image?: string;
+  readonly registryType?: string;
+  readonly description?: string;
+  readonly error?: string;
+
+  waitUntilReady(options?: WaitUntilReadyOptions): Promise<this>;
   delete(): Promise<void>;
 }
 ```
 
-### Instance
+### Namespace Classes
 
 ```typescript
-class Instance {
-  instanceId: string;
-  name?: string;
-  description?: string;
-  status: string;
-  agentUrl: string;
-  createdAt: string;
-  templateId?: string;
-  region?: string;
-  vmSize?: string;
-  env?: Record<string, string>;
-  
-  run(prompt: string, options?: RunOptions): Promise<RunResult>;
-  stop(): Promise<void>;
-  destroy(): Promise<void>;
-  health(): Promise<any>;
-  getChanges(): Promise<any>;
-  refresh(): Promise<any>;
-  streamLogs(onLog: (log: any) => void): Promise<() => void>;
-  
-  // Legacy methods
-  getId(): string;
-  getStatus(): string;
-  getInfo(): InstanceData;
-  checkHealth(): Promise<any>;
+class TasksNamespace {
+  list(): Promise<TaskData[]>;
+  getStatus(taskId: string): Promise<TaskData>;
+  poll(taskId: string, options?: PollOptions): Promise<RunResult>;
+}
+
+class PortsNamespace {
+  list(): Promise<PortInfo[]>;
+  open(ports: number[]): Promise<unknown>;
+  getProxyUrl(port: number): string;
+}
+
+class FilesNamespace {
+  getChanges(): Promise<FileChanges>;
+  tree(): Promise<unknown>;
+}
+
+class ToolsNamespace {
+  list(): Promise<ToolInfo[]>;
+  getMcpConfig(): Promise<McpConfig>;
+}
+
+class IntegrationsNamespace {
+  get(): Promise<IntegrationConfig>;
+  set(config: IntegrationConfig): Promise<unknown>;
 }
 ```
 
 ## Usage Example
 
 ```typescript
-import { In10ntClient } from '@in10nt/sdk';
+import { Instance, In10ntClient, createConsoleLogger } from '@in10nt/sdk';
 import type {
-  InstanceConfig,
+  CreateInstanceConfig,
   RunOptions,
   RunResult,
   TokenUsage
 } from '@in10nt/sdk';
 
-const client = new In10ntClient({
-  apiKey: process.env.IN10NT_API_KEY!
-});
-
+// Zero-config path
 async function buildAPI(): Promise<void> {
-  const config: InstanceConfig = {
+  const config: CreateInstanceConfig = {
     name: 'api-builder',
     description: 'REST API builder',
     env: {
@@ -215,11 +279,11 @@ async function buildAPI(): Promise<void> {
     }
   };
 
-  const instance = await client.instances.create(config);
+  const instance = await Instance.create(config);
 
   const options: RunOptions = {
     model: 'anthropic/claude-sonnet-4.5',
-    timeout: 300000,
+    timeout: 300_000,
     waitForHealth: true
   };
 
@@ -235,6 +299,29 @@ async function buildAPI(): Promise<void> {
   await instance.destroy();
 }
 
+// Client path
+async function withClient(): Promise<void> {
+  const client = new In10ntClient({
+    logger: createConsoleLogger()
+  });
+
+  const instance = await client.instances.create({
+    name: 'typed-agent',
+    description: 'Typed example'
+  });
+
+  // Namespaced methods are fully typed
+  const tasks = await instance.tasks.list();
+  const ports = await instance.ports.list();
+  const changes = await instance.files.getChanges();
+
+  // Usage tracking
+  const usage: TokenUsage = await client.usage.getTokenUsage();
+  console.log(`Monthly cost: $${usage.monthlyCost}`);
+
+  await instance.destroy();
+}
+
 buildAPI().catch(console.error);
 ```
 
@@ -244,6 +331,7 @@ Extend types for your use case:
 
 ```typescript
 import { Instance, In10ntClient } from '@in10nt/sdk';
+import type { RunResult } from '@in10nt/sdk';
 
 // Custom session type
 interface AgentSession {
@@ -270,8 +358,11 @@ class SessionManager {
   }
 
   async createSession(name: string): Promise<AgentSession> {
-    const instance = await this.client.instances.create({ name });
-    
+    const instance = await this.client.instances.create({
+      name,
+      description: `Session: ${name}`
+    });
+
     const session: AgentSession = {
       id: instance.instanceId,
       instance,
@@ -283,17 +374,12 @@ class SessionManager {
     return session;
   }
 
-  async runTask(
-    sessionId: string,
-    prompt: string
-  ): Promise<Task> {
+  async runTask(sessionId: string, prompt: string): Promise<Task> {
     const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error('Session not found');
-    }
+    if (!session) throw new Error('Session not found');
 
-    const result = await session.instance.run(prompt);
-    
+    const result: RunResult = await session.instance.run(prompt);
+
     const task: Task = {
       prompt,
       result: result.response,
@@ -320,24 +406,24 @@ class SessionManager {
 Create type guards for runtime checking:
 
 ```typescript
-function isRunResult(obj: any): obj is RunResult {
+import type { RunResult } from '@in10nt/sdk';
+import { Instance } from '@in10nt/sdk';
+
+function isRunResult(obj: unknown): obj is RunResult {
   return (
     typeof obj === 'object' &&
-    typeof obj.response === 'string' &&
-    typeof obj.tokensUsed === 'number' &&
-    typeof obj.duration_ms === 'number' &&
-    obj.usage &&
-    typeof obj.usage.total_tokens === 'number' &&
-    typeof obj.usage.cost === 'number'
+    obj !== null &&
+    typeof (obj as RunResult).response === 'string' &&
+    typeof (obj as RunResult).tokensUsed === 'number'
   );
 }
 
-function isInstance(obj: any): obj is Instance {
+function isInstance(obj: unknown): obj is Instance {
   return (
     typeof obj === 'object' &&
-    typeof obj.instanceId === 'string' &&
-    typeof obj.status === 'string' &&
-    typeof obj.agentUrl === 'string'
+    obj !== null &&
+    typeof (obj as Instance).instanceId === 'string' &&
+    typeof (obj as Instance).status === 'string'
   );
 }
 
@@ -348,58 +434,27 @@ if (isRunResult(result)) {
 }
 ```
 
-## Async Type Utilities
-
-```typescript
-type AsyncReturnType<T extends (...args: any) => Promise<any>> =
-  T extends (...args: any) => Promise<infer R> ? R : any;
-
-// Get return types from SDK methods
-type InstanceType = AsyncReturnType<typeof client.instances.create>;
-type TemplateType = AsyncReturnType<typeof client.templates.create>;
-type UsageType = AsyncReturnType<typeof client.usage.getTokenUsage>;
-```
-
-## Strict Mode Configuration
-
-```json
-// tsconfig.json
-{
-  "compilerOptions": {
-    "strict": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"]
-  }
-}
-```
-
 ## Generic Wrapper
 
-Create a generic wrapper for type safety:
+Create a generic wrapper for type-safe environment variables:
 
 ```typescript
+import { Instance, In10ntClient } from '@in10nt/sdk';
+import type { ClientConfig } from '@in10nt/sdk';
+
 class TypedClient<TEnv extends Record<string, string> = Record<string, string>> {
   private client: In10ntClient;
 
-  constructor(config: In10ntClientConfig) {
+  constructor(config?: ClientConfig) {
     this.client = new In10ntClient(config);
   }
 
   async createInstance(
     name: string,
+    description: string,
     env: TEnv
   ): Promise<Instance> {
-    return this.client.instances.create({ name, env });
+    return this.client.instances.create({ name, description, env });
   }
 }
 
@@ -410,14 +465,15 @@ interface MyEnv {
   NODE_ENV: 'development' | 'production';
 }
 
-const typedClient = new TypedClient<MyEnv>({
-  apiKey: process.env.IN10NT_API_KEY!
-});
+const typedClient = new TypedClient<MyEnv>();
 
-const instance = await typedClient.createInstance('my-app', {
-  API_KEY: 'key',
-  DATABASE_URL: 'postgres://...',
-  NODE_ENV: 'development'
-});
+const instance = await typedClient.createInstance(
+  'my-app',
+  'My application',
+  {
+    API_KEY: 'key',
+    DATABASE_URL: 'postgres://...',
+    NODE_ENV: 'development'
+  }
+);
 ```
-
